@@ -1,0 +1,6 @@
+/* Reset root max-width to allow full width layout */
+#root {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
