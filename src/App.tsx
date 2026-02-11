@@ -7,6 +7,7 @@ import TasksPage from './pages/TasksPage';
 import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
 import OutputReportPage from './pages/OutputReportPage';
+import WeeklyReportPage from './pages/WeeklyReportPage';
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
             <Route path="tasks" element={<TasksPage />} />
             <Route path="outputs" element={<OutputReportPage />} />
             <Route path="reports" element={<ReportsPage />} />
+            <Route path="weekly" element={<WeeklyReportPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>

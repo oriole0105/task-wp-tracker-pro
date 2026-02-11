@@ -4,7 +4,11 @@ import {
   Button, IconButton, Chip, FormControl, InputLabel, Select, MenuItem, Checkbox, ListItemText,
   Typography, Divider
 } from '@mui/material';
-import { PlayArrow, Pause, Edit, Delete, Add, SubdirectoryArrowRight, FilterListOff, SelectAll, Person, EventAvailable, EventBusy } from '@mui/icons-material';
+import { 
+  PlayArrow, Pause, Edit, Delete, Add, SubdirectoryArrowRight, 
+  FilterListOff, SelectAll, EventAvailable, EventBusy,
+  KeyboardArrowDown, KeyboardArrowRight, UnfoldLess, UnfoldMore, EventNote
+} from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers';
 import { useTaskStore } from '../store/useTaskStore';
 import type { Task, TaskStatus } from '../types';
@@ -23,9 +27,15 @@ const formatDate = (ts: number | undefined) => {
     return format(ts, 'yyyy-MM-dd HH:mm');
 };
 
+const formatDateOnly = (ts: number | undefined) => {
+    if (!ts) return '-';
+    return format(ts, 'yyyy-MM-dd');
+};
+
 interface IndexedTask extends Task {
   indexDisplay: string;
   depth: number;
+  hasChildren: boolean;
 }
 
 export const TaskList: React.FC = () => {
@@ -41,7 +51,21 @@ export const TaskList: React.FC = () => {
   const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
   const [parentTaskId, setParentTaskId] = useState<string | undefined>(undefined);
 
-  // Extract unique labels from all tasks
+  const [collapsedTaskIds, setCollapsedTaskIds] = useState<Set<string>>(new Set());
+
+  const toggleCollapse = (id: string) => {
+    const newCollapsed = new Set(collapsedTaskIds);
+    if (newCollapsed.has(id)) newCollapsed.delete(id);
+    else newCollapsed.add(id);
+    setCollapsedTaskIds(newCollapsed);
+  };
+
+  const expandAll = () => setCollapsedTaskIds(new Set());
+  const collapseAll = () => {
+      const allParentIds = new Set(tasks.filter(t => tasks.some(child => child.parentId === t.id)).map(t => t.id));
+      setCollapsedTaskIds(allParentIds);
+  };
+
   const allAvailableLabels = useMemo(() => {
     const labels = new Set<string>();
     tasks.forEach(t => (t.labels || []).forEach(l => labels.add(l)));
@@ -51,78 +75,48 @@ export const TaskList: React.FC = () => {
   const processedTasks = useMemo(() => {
     const baseFiltered = tasks.filter(task => {
       if (filterStatus.length > 0 && !filterStatus.includes(task.status)) return false;
-      if (selectedMainCats.length > 0) {
-          const taskCat = task.mainCategory || '其他';
-          if (!selectedMainCats.includes(taskCat)) return false;
-      }
-      if (selectedSubCats.length > 0) {
-          const taskSubCat = task.subCategory || '其他';
-          if (!selectedSubCats.includes(taskSubCat)) return false;
-      }
-      // Label Filter: Show task if it has AT LEAST ONE of the selected labels
-      if (selectedLabels.length > 0) {
-          const taskLabels = task.labels || [];
-          if (!taskLabels.some(l => selectedLabels.includes(l))) return false;
-      }
-
+      if (selectedMainCats.length > 0 && !selectedMainCats.includes(task.mainCategory || '其他')) return false;
+      if (selectedSubCats.length > 0 && !selectedSubCats.includes(task.subCategory || '其他')) return false;
+      if (selectedLabels.length > 0 && !(task.labels || []).some(l => selectedLabels.includes(l))) return false;
       if (dateRange[0] && task.estimatedStartDate && task.estimatedStartDate < dateRange[0].getTime()) return false;
       if (dateRange[1] && task.estimatedEndDate && task.estimatedEndDate > dateRange[1].getTime()) return false;
       return true;
     });
 
     const result: IndexedTask[] = [];
-    const buildHierarchy = (parentId: string | undefined, prefix: string, depth: number) => {
+    const buildHierarchy = (parentId: string | undefined, prefix: string, depth: number, isHiddenByParent: boolean) => {
       const children = baseFiltered.filter(t => t.parentId === parentId);
       children.forEach((child, i) => {
         const currentIndex = prefix ? `${prefix}.${i + 1}` : `${i + 1}`;
-        result.push({ ...child, indexDisplay: currentIndex, depth });
-        if (depth < 5) {
-            buildHierarchy(child.id, currentIndex, depth + 1);
-        }
+        const hasChildren = baseFiltered.some(t => t.parentId === child.id);
+        const isCurrentlyCollapsed = collapsedTaskIds.has(child.id);
+        if (!isHiddenByParent) result.push({ ...child, indexDisplay: currentIndex, depth, hasChildren });
+        if (depth < 5) buildHierarchy(child.id, currentIndex, depth + 1, isHiddenByParent || isCurrentlyCollapsed);
       });
     };
 
     const rootTasks = baseFiltered.filter(t => !t.parentId || !baseFiltered.find(p => p.id === t.parentId));
     rootTasks.forEach((task, i) => {
         const currentIndex = `${i + 1}`;
-        result.push({ ...task, indexDisplay: currentIndex, depth: 1 });
-        buildHierarchy(task.id, currentIndex, 2);
+        const hasChildren = baseFiltered.some(t => t.parentId === task.id);
+        const isCurrentlyCollapsed = collapsedTaskIds.has(task.id);
+        result.push({ ...task, indexDisplay: currentIndex, depth: 1, hasChildren });
+        buildHierarchy(task.id, currentIndex, 2, isCurrentlyCollapsed);
     });
-
     return result;
-  }, [tasks, filterStatus, selectedMainCats, selectedSubCats, selectedLabels, dateRange]);
+  }, [tasks, filterStatus, selectedMainCats, selectedSubCats, selectedLabels, dateRange, collapsedTaskIds]);
 
   const getActualDates = (task: Task) => {
-      if (!task.timeLogs || task.timeLogs.length === 0) return { start: undefined, end: undefined };
-      const start = Math.min(...task.timeLogs.map(l => l.startTime));
+      const logs = task.timeLogs || [];
+      if (logs.length === 0) return { start: undefined, end: undefined };
+      const start = Math.min(...logs.map(l => l.startTime));
       let end = undefined;
       if (task.status === 'DONE') {
-          const endedLogs = task.timeLogs.filter(l => l.endTime);
+          const endedLogs = logs.filter(l => l.endTime);
           if (endedLogs.length > 0) end = Math.max(...endedLogs.map(l => l.endTime!));
       }
       return { start, end };
   };
-
-  const handleEdit = (task: Task) => {
-    setEditingTask(task);
-    setParentTaskId(undefined);
-    setIsFormOpen(true);
-  };
-
-  const handleCreateSubTask = (taskId: string) => {
-    setEditingTask(undefined);
-    setParentTaskId(taskId);
-    setIsFormOpen(true);
-  };
-  
-  const handleCreateNew = () => {
-      setEditingTask(undefined);
-      setParentTaskId(undefined);
-      setIsFormOpen(true);
-  }
-
-  const mainOptions = [...mainCategories, '其他'];
-  const subOptions = [...subCategories, '其他'];
 
   const statusMap: Record<TaskStatus, string> = {
       'TODO': '待處理',
@@ -155,11 +149,11 @@ export const TaskList: React.FC = () => {
           <InputLabel>任務分類</InputLabel>
           <Select multiple value={selectedMainCats} onChange={(e) => setSelectedMainCats(e.target.value as string[])} renderValue={(selected) => selected.length === 0 ? '全部任務分類' : `已選 (${selected.length})`} label="任務分類">
             <Box sx={{ p: 1, display: 'flex', gap: 1 }}>
-                <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setSelectedMainCats(mainOptions); }}>全選</Button>
+                <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setSelectedMainCats([...mainCategories, '其他']); }}>全選</Button>
                 <Button size="small" startIcon={<FilterListOff />} onClick={(e) => { e.stopPropagation(); setSelectedMainCats([]); }}>清除</Button>
             </Box>
             <Divider />
-            {mainOptions.map((c) => (
+            {[...mainCategories, '其他'].map((c) => (
               <MenuItem key={c} value={c}>
                 <Checkbox checked={selectedMainCats.includes(c)} />
                 <ListItemText primary={c} />
@@ -172,11 +166,11 @@ export const TaskList: React.FC = () => {
           <InputLabel>時間分類</InputLabel>
           <Select multiple value={selectedSubCats} onChange={(e) => setSelectedSubCats(e.target.value as string[])} renderValue={(selected) => selected.length === 0 ? '全部時間分類' : `已選 (${selected.length})`} label="時間分類">
             <Box sx={{ p: 1, display: 'flex', gap: 1 }}>
-                <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setSelectedSubCats(subOptions); }}>全選</Button>
+                <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setSelectedSubCats([...subCategories, '其他']); }}>全選</Button>
                 <Button size="small" startIcon={<FilterListOff />} onClick={(e) => { e.stopPropagation(); setSelectedSubCats([]); }}>清除</Button>
             </Box>
             <Divider />
-            {subOptions.map((sc) => (
+            {[...subCategories, '其他'].map((sc) => (
               <MenuItem key={sc} value={sc}>
                 <Checkbox checked={selectedSubCats.includes(sc)} />
                 <ListItemText primary={sc} />
@@ -185,7 +179,6 @@ export const TaskList: React.FC = () => {
           </Select>
         </FormControl>
 
-        {/* Labels Filter */}
         <FormControl sx={{ minWidth: 150 }} size="small">
           <InputLabel>標籤篩選</InputLabel>
           <Select multiple value={selectedLabels} onChange={(e) => setSelectedLabels(e.target.value as string[])} renderValue={(selected) => selected.length === 0 ? '全部標籤' : `已選 (${selected.length})`} label="標籤篩選">
@@ -194,9 +187,7 @@ export const TaskList: React.FC = () => {
                 <Button size="small" startIcon={<FilterListOff />} onClick={(e) => { e.stopPropagation(); setSelectedLabels([]); }}>清除</Button>
             </Box>
             <Divider />
-            {allAvailableLabels.length === 0 ? (
-                <MenuItem disabled>無可用標籤</MenuItem>
-            ) : allAvailableLabels.map((l) => (
+            {allAvailableLabels.map((l) => (
               <MenuItem key={l} value={l}>
                 <Checkbox checked={selectedLabels.includes(l)} />
                 <ListItemText primary={l} />
@@ -205,20 +196,24 @@ export const TaskList: React.FC = () => {
           </Select>
         </FormControl>
         
-        <DatePicker label="預估開始日" value={dateRange[0]} onChange={(d) => setDateRange([d, dateRange[1]])} slotProps={{ textField: { size: 'small' } }} />
-        <DatePicker label="預估完成日" value={dateRange[1]} onChange={(d) => setDateRange([dateRange[0], d])} slotProps={{ textField: { size: 'small' } }} />
+        <DatePicker label="篩選開始日" value={dateRange[0]} onChange={(d) => setDateRange([d, dateRange[1]])} slotProps={{ textField: { size: 'small' } }} />
+        <DatePicker label="篩選完成日" value={dateRange[1]} onChange={(d) => setDateRange([dateRange[0], d])} slotProps={{ textField: { size: 'small' } }} />
         
-        <Button variant="contained" startIcon={<Add />} onClick={handleCreateNew} sx={{ ml: 'auto' }}>建立任務</Button>
+        <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>
+            <Button variant="outlined" size="small" startIcon={<UnfoldLess />} onClick={collapseAll}>縮合</Button>
+            <Button variant="outlined" size="small" startIcon={<UnfoldMore />} onClick={expandAll}>展開</Button>
+            <Button variant="contained" size="small" startIcon={<Add />} onClick={() => { setEditingTask(undefined); setParentTaskId(undefined); setIsFormOpen(true); }}>建立任務</Button>
+        </Box>
       </Box>
 
       <TableContainer component={Paper}>
         <Table>
           <TableHead sx={{ bgcolor: '#f5f5f5' }}>
             <TableRow>
-              <TableCell width={80}>No.</TableCell>
+              <TableCell width={120}>No.</TableCell>
               <TableCell>任務名稱</TableCell>
               <TableCell>分類</TableCell>
-              <TableCell>人員</TableCell>
+              <TableCell>預估日期</TableCell>
               <TableCell>實際日期</TableCell>
               <TableCell>狀態</TableCell>
               <TableCell>累計工時</TableCell>
@@ -232,12 +227,20 @@ export const TaskList: React.FC = () => {
                  </TableRow>
             ) : processedTasks.map((task) => {
               const actual = getActualDates(task);
+              const isCollapsed = collapsedTaskIds.has(task.id);
               return (
                 <TableRow key={task.id} hover>
                   <TableCell>
-                      <Typography variant="body2" color="textSecondary" sx={{ fontVariantNumeric: 'tabular-nums', fontWeight: task.depth === 1 ? 'bold' : 'normal' }}>
-                          {task.indexDisplay}
-                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          {task.hasChildren ? (
+                              <IconButton size="small" onClick={() => toggleCollapse(task.id)} sx={{ mr: 0.5, p: 0.25 }}>
+                                  {isCollapsed ? <KeyboardArrowRight fontSize="small" /> : <KeyboardArrowDown fontSize="small" />}
+                              </IconButton>
+                          ) : <Box sx={{ width: 26 }} />}
+                          <Typography variant="body2" color="textSecondary" sx={{ fontVariantNumeric: 'tabular-nums', fontWeight: task.depth === 1 ? 'bold' : 'normal' }}>
+                              {task.indexDisplay}
+                          </Typography>
+                      </Box>
                   </TableCell>
                   <TableCell>
                     <Box>
@@ -251,18 +254,18 @@ export const TaskList: React.FC = () => {
                     </Box>
                   </TableCell>
                   <TableCell>
-                      <Chip label={task.mainCategory || '其他'} size="small" variant="outlined" sx={{ mr: 0.5 }} title="任務分類" />
-                      <Chip label={task.subCategory || '其他'} size="small" variant="outlined" color="primary" title="時間分類" />
+                      <Chip label={task.mainCategory || '其他'} size="small" variant="outlined" sx={{ mr: 0.5 }} />
+                      <Chip label={task.subCategory || '其他'} size="small" variant="outlined" color="primary" />
                   </TableCell>
                   <TableCell>
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <Person sx={{ fontSize: 14, color: 'primary.main' }} />
-                              <Typography variant="caption" sx={{ fontWeight: 'bold' }}>主: {task.assignee || '-'}</Typography>
+                              <EventNote sx={{ fontSize: 14, color: 'action.active' }} />
+                              <Typography variant="caption">始: {formatDateOnly(task.estimatedStartDate)}</Typography>
                           </Box>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <Person sx={{ fontSize: 14, color: 'text.secondary' }} />
-                              <Typography variant="caption" color="textSecondary">派: {task.reporter || '-'}</Typography>
+                              <EventNote sx={{ fontSize: 14, color: 'action.active' }} />
+                              <Typography variant="caption">末: {formatDateOnly(task.estimatedEndDate)}</Typography>
                           </Box>
                       </Box>
                   </TableCell>
@@ -285,15 +288,11 @@ export const TaskList: React.FC = () => {
                   <TableCell align="right">
                     {task.status === 'IN_PROGRESS' ? (
                       <IconButton size="small" color="warning" onClick={() => stopTimer(task.id)}><Pause /></IconButton>
-                    ) : (
-                      <IconButton size="small" color="primary" onClick={() => startTimer(task.id)}><PlayArrow /></IconButton>
-                    )}
-                    <IconButton size="small" onClick={() => handleEdit(task)}><Edit fontSize="small" /></IconButton>
+                    ) : <IconButton size="small" color="primary" onClick={() => startTimer(task.id)}><PlayArrow /></IconButton>}
+                    <IconButton size="small" onClick={() => { setEditingTask(task); setParentTaskId(undefined); setIsFormOpen(true); }}><Edit fontSize="small" /></IconButton>
                     {task.depth < 5 ? (
-                      <IconButton size="small" onClick={() => handleCreateSubTask(task.id)} title="建立子任務"><SubdirectoryArrowRight fontSize="small" /></IconButton>
-                    ) : (
-                      <IconButton size="small" disabled title="已達最大深度"><SubdirectoryArrowRight fontSize="small" sx={{ opacity: 0.1 }} /></IconButton>
-                    )}
+                      <IconButton size="small" onClick={() => { setEditingTask(undefined); setParentTaskId(task.id); setIsFormOpen(true); }} title="建立子任務"><SubdirectoryArrowRight fontSize="small" /></IconButton>
+                    ) : <IconButton size="small" disabled><SubdirectoryArrowRight fontSize="small" sx={{ opacity: 0.1 }} /></IconButton>}
                      <IconButton size="small" onClick={() => deleteTask(task.id)} color="error"><Delete fontSize="small" /></IconButton>
                   </TableCell>
                 </TableRow>

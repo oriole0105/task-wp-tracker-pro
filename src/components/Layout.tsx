@@ -1,7 +1,7 @@
 import React from 'react';
 import { AppBar, Toolbar, Typography, Container, Box, Button } from '@mui/material';
 import { Link as RouterLink, Outlet } from 'react-router-dom';
-import { Dashboard, ListAlt, PieChart, Settings, AssignmentTurnedIn } from '@mui/icons-material';
+import { Dashboard, ListAlt, PieChart, Settings, AssignmentTurnedIn, Description } from '@mui/icons-material';
 
 export const Layout: React.FC = () => {
   return (
@@ -22,6 +22,9 @@ export const Layout: React.FC = () => {
           </Button>
           <Button color="inherit" component={RouterLink} to="/reports" startIcon={<PieChart />}>
             統計報表
+          </Button>
+          <Button color="inherit" component={RouterLink} to="/weekly" startIcon={<Description />}>
+            週報生成
           </Button>
           <Button color="inherit" component={RouterLink} to="/settings" startIcon={<Settings />}>
             系統設定
