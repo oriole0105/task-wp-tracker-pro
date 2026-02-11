@@ -2,12 +2,12 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Box, Paper, Typography, Button,  
   Dialog, DialogTitle, DialogContent, DialogActions, TextField,
-  ToggleButtonGroup, ToggleButton, FormControl, InputLabel, Select, MenuItem
+  ToggleButtonGroup, ToggleButton, FormControl, InputLabel, Select, MenuItem, IconButton
 } from '@mui/material';
-import { Pause, Palette, Height } from '@mui/icons-material';
+import { Pause, Palette, Height, ChevronLeft, ChevronRight } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers';
 import { useTaskStore } from '../store/useTaskStore';
-import { format, startOfDay, endOfDay, startOfWeek, addDays, isSameDay } from 'date-fns';
+import { format, startOfDay, endOfDay, startOfWeek, addDays, isSameDay, addWeeks, subWeeks, subDays } from 'date-fns';
 import { getCategoryColor } from '../utils/colors';
 import type { TimeLog } from '../types';
 
@@ -32,7 +32,7 @@ export const TimeTracker: React.FC = () => {
   const { tasks, stopTimer, updateTimeLog, deleteTimeLog } = useTaskStore();
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [view, setView] = useState<ViewType>('week5');
-  const [colorMode, setColorMode] = useState<ColorMode>('main');
+  const [colorMode, setColorMode] = useState<ColorMode>('sub');
   const [hourHeight, setHourHeight] = useState<ZoomLevel>(60);
   
   const activeTask = tasks.find(t => t.status === 'IN_PROGRESS');
@@ -40,12 +40,32 @@ export const TimeTracker: React.FC = () => {
 
   const pixelsPerMinute = hourHeight / 60;
 
+  // Navigation Logic
+  const handlePrev = () => {
+    if (!selectedDate) return;
+    if (view === 'day') setSelectedDate(subDays(selectedDate, 1));
+    else setSelectedDate(subWeeks(selectedDate, 1));
+  };
+
+  const handleNext = () => {
+    if (!selectedDate) return;
+    if (view === 'day') setSelectedDate(addDays(selectedDate, 1));
+    else setSelectedDate(addWeeks(selectedDate, 1));
+  };
+
   const displayDates = useMemo(() => {
     if (!selectedDate) return [];
     if (view === 'day') return [startOfDay(selectedDate)];
-    const monday = startOfWeek(selectedDate, { weekStartsOn: 1 });
-    const count = view === 'week5' ? 5 : 7;
-    return Array.from({ length: count }, (_, i) => addDays(monday, i));
+    
+    // Start from Sunday (weekStartsOn: 0)
+    const sunday = startOfWeek(selectedDate, { weekStartsOn: 0 });
+    
+    if (view === 'week5') {
+        // Still only show Mon-Fri for 5D mode, but base calculation on Sunday
+        return [1, 2, 3, 4, 5].map(i => addDays(sunday, i));
+    }
+    
+    return Array.from({ length: 7 }, (_, i) => addDays(sunday, i));
   }, [selectedDate, view]);
 
   const slotsByDate = useMemo(() => {
@@ -136,13 +156,18 @@ export const TimeTracker: React.FC = () => {
   return (
     <Box sx={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexShrink: 0, gap: 2, flexWrap: 'wrap' }}>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-            <DatePicker 
-                label="Date"
-                value={selectedDate} 
-                onChange={(d) => setSelectedDate(d)}
-                slotProps={{ textField: { size: 'small' } }}
-            />
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <IconButton size="small" onClick={handlePrev}><ChevronLeft /></IconButton>
+                <DatePicker 
+                    label="日期"
+                    value={selectedDate} 
+                    onChange={(d) => setSelectedDate(d)}
+                    slotProps={{ textField: { size: 'small', sx: { width: 150 } } }}
+                />
+                <IconButton size="small" onClick={handleNext}><ChevronRight /></IconButton>
+            </Box>
+
             <ToggleButtonGroup
                 value={view}
                 exclusive
@@ -150,9 +175,9 @@ export const TimeTracker: React.FC = () => {
                 size="small"
                 color="primary"
             >
-                <ToggleButton value="day">Day</ToggleButton>
-                <ToggleButton value="week5">Week (5D)</ToggleButton>
-                <ToggleButton value="week7">Week (7D)</ToggleButton>
+                <ToggleButton value="day">日</ToggleButton>
+                <ToggleButton value="week5">週 (5天)</ToggleButton>
+                <ToggleButton value="week7">週 (7天)</ToggleButton>
             </ToggleButtonGroup>
 
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -164,22 +189,22 @@ export const TimeTracker: React.FC = () => {
                     size="small"
                     color="secondary"
                 >
-                    <ToggleButton value={60}>Compact (60px)</ToggleButton>
-                    <ToggleButton value={120}>Detail (120px)</ToggleButton>
+                    <ToggleButton value={60}>精簡</ToggleButton>
+                    <ToggleButton value={120}>詳細</ToggleButton>
                 </ToggleButtonGroup>
             </Box>
 
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Palette fontSize="small" color="action" />
-                <FormControl size="small" variant="outlined" sx={{ minWidth: 150 }}>
-                    <InputLabel>Color Mode</InputLabel>
+                <FormControl size="small" variant="outlined" sx={{ minWidth: 130 }}>
+                    <InputLabel>顏色</InputLabel>
                     <Select
                         value={colorMode}
-                        label="Color Mode"
+                        label="顏色"
                         onChange={(e) => setColorMode(e.target.value as ColorMode)}
                     >
-                        <MenuItem value="main">By Main Category</MenuItem>
-                        <MenuItem value="sub">By Sub Category</MenuItem>
+                        <MenuItem value="main">任務分類</MenuItem>
+                        <MenuItem value="sub">時間分類</MenuItem>
                     </Select>
                 </FormControl>
             </Box>
@@ -187,8 +212,8 @@ export const TimeTracker: React.FC = () => {
 
         {activeTask && (
             <Paper elevation={1} sx={{ px: 2, py: 1, bgcolor: '#e3f2fd', display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Typography variant="body2"><b>Live:</b> {activeTask.title}</Typography>
-                <Button size="small" variant="contained" color="warning" startIcon={<Pause />} onClick={() => stopTimer(activeTask.id)}>Stop</Button>
+                <Typography variant="body2"><b>執行中:</b> {activeTask.title}</Typography>
+                <Button size="small" variant="contained" color="warning" startIcon={<Pause />} onClick={() => stopTimer(activeTask.id)}>停止</Button>
             </Paper>
         )}
       </Box>
@@ -229,7 +254,7 @@ export const TimeTracker: React.FC = () => {
                                 display: 'flex', alignItems: 'center', justifyContent: 'center', 
                                 position: 'sticky', top: 0, zIndex: 25 
                             }}>
-                                <Typography variant="subtitle2" sx={{ fontWeight: isToday ? 'bold' : 'normal' }}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: isToday ? 'bold' : 'normal', fontSize: '0.75rem' }}>
                                     {format(date, view === 'day' ? 'EEEE, MMMM do' : 'EEE MM/dd')}
                                 </Typography>
                             </Box>
@@ -246,6 +271,7 @@ export const TimeTracker: React.FC = () => {
                                 
                                 const startTotalMinutes = start.getHours() * 60 + start.getMinutes();
                                 const snappedStartMinutes = Math.floor(startTotalMinutes / 5) * 5;
+                                
                                 const endTotalMinutes = end.getHours() * 60 + end.getMinutes();
                                 const snappedEndMinutes = Math.ceil(endTotalMinutes / 5) * 5;
                                 
@@ -311,17 +337,17 @@ export const TimeTracker: React.FC = () => {
       </Paper>
 
       <Dialog open={!!editingLog} onClose={() => setEditingLog(null)}>
-        <DialogTitle>Edit Time Log ({editingLog ? format(editingLog.date, 'MM/dd') : ''})</DialogTitle>
+        <DialogTitle>編輯時間紀錄 ({editingLog ? format(editingLog.date, 'MM/dd') : ''})</DialogTitle>
         <DialogContent>
            <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
-              <TextField label="Start (HH:mm)" value={editStart} onChange={(e) => setEditStart(e.target.value)} />
-              <TextField label="End (HH:mm)" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} disabled={!editingLog?.endTime && editEnd === ''} />
+              <TextField label="開始 (HH:mm)" value={editStart} onChange={(e) => setEditStart(e.target.value)} />
+              <TextField label="結束 (HH:mm)" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} disabled={!editingLog?.endTime && editEnd === ''} />
            </Box>
         </DialogContent>
         <DialogActions>
-          <Button color="error" onClick={handleDeleteLog}>Delete</Button>
-          <Button onClick={() => setEditingLog(null)}>Cancel</Button>
-          <Button onClick={handleSaveLog} variant="contained">Save</Button>
+          <Button color="error" onClick={handleDeleteLog}>刪除紀錄</Button>
+          <Button onClick={() => setEditingLog(null)}>取消</Button>
+          <Button variant="contained" onClick={handleSaveLog}>儲存</Button>
         </DialogActions>
       </Dialog>
     </Box>

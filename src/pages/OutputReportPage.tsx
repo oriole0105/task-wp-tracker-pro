@@ -22,7 +22,6 @@ interface IndexedTaskWithOutputs extends Task {
 const OutputReportPage: React.FC = () => {
   const { tasks, updateWorkOutput } = useTaskStore();
   
-  // Default to current week
   const [startDate, setStartDate] = useState<Date | null>(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [endDate, setEndDate] = useState<Date | null>(endOfWeek(new Date(), { weekStartsOn: 1 }));
 
@@ -84,23 +83,23 @@ const OutputReportPage: React.FC = () => {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>Work Outputs Tracking</Typography>
+      <Typography variant="h4" gutterBottom>工作產出追蹤</Typography>
       
       <Paper sx={{ p: 2, mb: 4 }}>
         <Grid container spacing={2} alignItems="center">
             <Grid>
-                <Typography variant="h6">Activity Range:</Typography>
+                <Typography variant="h6">統計區間：</Typography>
             </Grid>
             <Grid sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <IconButton onClick={handlePrevWeek} title="Previous Week"><ChevronLeft /></IconButton>
-                <DatePicker value={startDate} onChange={setStartDate} label="Start" slotProps={{ textField: { size: 'small' } }} />
+                <IconButton onClick={handlePrevWeek} title="前一週"><ChevronLeft /></IconButton>
+                <DatePicker value={startDate} onChange={setStartDate} label="開始日期" slotProps={{ textField: { size: 'small' } }} />
                 <Typography>-</Typography>
-                <DatePicker value={endDate} onChange={setEndDate} label="End" slotProps={{ textField: { size: 'small' } }} />
-                <IconButton onClick={handleNextWeek} title="Next Week"><ChevronRight /></IconButton>
+                <DatePicker value={endDate} onChange={setEndDate} label="結束日期" slotProps={{ textField: { size: 'small' } }} />
+                <IconButton onClick={handleNextWeek} title="後一週"><ChevronRight /></IconButton>
             </Grid>
             <Grid sx={{ ml: 2 }}>
                 <Typography variant="body2" color="textSecondary">
-                    * Showing tasks with activity in this period.
+                    * 僅顯示在此區間內有執行紀錄（工時紀錄）的任務。
                 </Typography>
             </Grid>
         </Grid>
@@ -111,18 +110,18 @@ const OutputReportPage: React.FC = () => {
           <TableHead sx={{ bgcolor: '#f5f5f5' }}>
             <TableRow>
               <TableCell width={80}>WBS</TableCell>
-              <TableCell>Task Name</TableCell>
-              <TableCell>Categories</TableCell>
-              <TableCell>Time Spent</TableCell>
-              <TableCell>Work Outputs</TableCell>
-              <TableCell width={150}>Completeness (%)</TableCell>
+              <TableCell>任務名稱</TableCell>
+              <TableCell>分類</TableCell>
+              <TableCell>累計工時</TableCell>
+              <TableCell>工作產出名稱</TableCell>
+              <TableCell width={150}>完成度 (%)</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {processedData.length === 0 ? (
                  <TableRow>
                     <TableCell colSpan={6} align="center" sx={{ py: 8 }}>
-                        <Typography color="textSecondary">No activity found in the selected range.</Typography>
+                        <Typography color="textSecondary">此區間內無工作紀錄。</Typography>
                     </TableCell>
                  </TableRow>
             ) : processedData.map((task) => {
@@ -133,12 +132,12 @@ const OutputReportPage: React.FC = () => {
                     <TableCell sx={{ fontWeight: 'bold' }}>{task.indexDisplay}</TableCell>
                     <TableCell sx={{ fontWeight: 'bold' }}>{task.title}</TableCell>
                     <TableCell>
-                      <Chip label={task.mainCategory || '其他'} size="small" variant="outlined" sx={{ mr: 0.5 }} />
-                      <Chip label={task.subCategory || '其他'} size="small" variant="outlined" color="primary" />
+                      <Chip label={task.mainCategory || '其他'} size="small" variant="outlined" sx={{ mr: 0.5 }} title="任務分類" />
+                      <Chip label={task.subCategory || '其他'} size="small" variant="outlined" color="primary" title="時間分類" />
                     </TableCell>
                     <TableCell>{formatTime(task.totalTimeSpent)}</TableCell>
                     <TableCell colSpan={2}>
-                        {taskOutputs.length === 0 && <Typography variant="caption" color="textDisabled">No outputs</Typography>}
+                        {taskOutputs.length === 0 && <Typography variant="caption" color="textDisabled">無產出紀錄</Typography>}
                     </TableCell>
                   </TableRow>
                   

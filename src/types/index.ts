@@ -35,7 +35,8 @@ export interface Task {
   totalTimeSpent: number;
   
   parentId?: string;
-  outputs: WorkOutput[]; // New field for work outputs
+  outputs: WorkOutput[];
+  labels: string[]; // New field for flexible tagging, max 3
 }
 
 export interface CategoryData {

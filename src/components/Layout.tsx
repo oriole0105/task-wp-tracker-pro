@@ -1,7 +1,7 @@
 import React from 'react';
 import { AppBar, Toolbar, Typography, Container, Box, Button } from '@mui/material';
 import { Link as RouterLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, ListTodo, PieChart, Settings } from 'lucide-react';
+import { Dashboard, ListAlt, PieChart, Settings, AssignmentTurnedIn } from '@mui/icons-material';
 
 export const Layout: React.FC = () => {
   return (
@@ -11,20 +11,20 @@ export const Layout: React.FC = () => {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             Task Time Tracker
           </Typography>
-          <Button color="inherit" component={RouterLink} to="/" startIcon={<LayoutDashboard size={18} />}>
-            Dashboard
+          <Button color="inherit" component={RouterLink} to="/" startIcon={<Dashboard />}>
+            儀表板
           </Button>
-          <Button color="inherit" component={RouterLink} to="/tasks" startIcon={<ListTodo size={18} />}>
-            Tasks
+          <Button color="inherit" component={RouterLink} to="/tasks" startIcon={<ListAlt />}>
+            任務管理
           </Button>
-          <Button color="inherit" component={RouterLink} to="/outputs" startIcon={<ListTodo size={18} />}>
-            Outputs
+          <Button color="inherit" component={RouterLink} to="/outputs" startIcon={<AssignmentTurnedIn />}>
+            工作產出
           </Button>
-          <Button color="inherit" component={RouterLink} to="/reports" startIcon={<PieChart size={18} />}>
-            Reports
+          <Button color="inherit" component={RouterLink} to="/reports" startIcon={<PieChart />}>
+            統計報表
           </Button>
-          <Button color="inherit" component={RouterLink} to="/settings" startIcon={<Settings size={18} />}>
-            Settings
+          <Button color="inherit" component={RouterLink} to="/settings" startIcon={<Settings />}>
+            系統設定
           </Button>
         </Toolbar>
       </AppBar>

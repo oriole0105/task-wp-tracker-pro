@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, FormControl, InputLabel, Select, MenuItem,
-  Grid, Box, Typography, IconButton, Paper, Divider
+  Grid, Box, Typography, IconButton, Paper, Divider, Chip
 } from '@mui/material';
-import { Add, Delete, Link as LinkIcon } from '@mui/icons-material';
+import { Add, Delete, Link as LinkIcon, Label as LabelIcon, AccountTree } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { v4 as uuidv4 } from 'uuid';
 import type { Task, TaskStatus, WorkOutput } from '../types';
@@ -18,7 +18,7 @@ interface TaskFormProps {
 }
 
 export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, parentId }) => {
-  const { mainCategories, subCategories, addTask, updateTask, getTaskById } = useTaskStore();
+  const { tasks, mainCategories, subCategories, addTask, updateTask, getTaskById } = useTaskStore();
   
   const [title, setTitle] = useState('');
   const [aliasTitle, setAliasTitle] = useState('');
@@ -31,7 +31,31 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
   const [reporter, setReporter] = useState('');
   const [status, setStatus] = useState<TaskStatus>('TODO');
   const [outputs, setOutputs] = useState<WorkOutput[]>([]);
-  
+  const [labels, setLabels] = useState<string[]>([]);
+  const [newLabel, setNewLabel] = useState('');
+  const [currentParentId, setCurrentParentId] = useState<string>('');
+
+  // Helper to get all descendants of a task to prevent circular references
+  const getDescendantIds = (taskId: string): string[] => {
+    const children = tasks.filter(t => t.parentId === taskId);
+    let ids = children.map(c => c.id);
+    children.forEach(c => {
+      ids = [...ids, ...getDescendantIds(c.id)];
+    });
+    return ids;
+  };
+
+  // Filter tasks that can be valid parents
+  const validParentCandidates = useMemo(() => {
+    if (!initialData) return tasks; // For new tasks, all are candidates
+    
+    const descendants = getDescendantIds(initialData.id);
+    return tasks.filter(t => 
+      t.id !== initialData.id && // Cannot be its own parent
+      !descendants.includes(t.id) // Cannot be a child of its own descendant
+    );
+  }, [tasks, initialData]);
+
   useEffect(() => {
     if (initialData) {
       setTitle(initialData.title);
@@ -45,9 +69,10 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setReporter(initialData.reporter);
       setStatus(initialData.status);
       setOutputs(initialData.outputs || []);
+      setLabels(initialData.labels || []);
+      setCurrentParentId(initialData.parentId || '');
     } else if (parentId) {
       const parent = getTaskById(parentId);
-      // Inherit categories from parent
       if (parent) {
         setMainCategory(parent.mainCategory);
         setSubCategory(parent.subCategory);
@@ -57,6 +82,8 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setDescription('');
       setStatus('TODO');
       setOutputs([]);
+      setLabels([]);
+      setCurrentParentId(parentId);
     } else {
       setTitle('');
       setAliasTitle('');
@@ -69,8 +96,23 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setReporter('');
       setStatus('TODO');
       setOutputs([]);
+      setLabels([]);
+      setCurrentParentId('');
     }
+    setNewLabel('');
   }, [initialData, parentId, open, getTaskById]);
+
+  const handleAddLabel = () => {
+    const trimmed = newLabel.trim();
+    if (trimmed && labels.length < 3 && !labels.includes(trimmed)) {
+      setLabels([...labels, trimmed]);
+      setNewLabel('');
+    }
+  };
+
+  const handleDeleteLabel = (labelToDelete: string) => {
+    setLabels(labels.filter(l => l !== labelToDelete));
+  };
 
   const handleAddOutput = () => {
     setOutputs([...outputs, { id: uuidv4(), name: '', link: '', completeness: '' }]);
@@ -97,7 +139,8 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       reporter,
       status,
       outputs,
-      parentId: parentId || (initialData?.parentId),
+      labels,
+      parentId: currentParentId || undefined,
     };
 
     if (initialData) {
@@ -110,68 +153,115 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>{initialData ? 'Edit Task' : 'New Task'}</DialogTitle>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        {initialData ? '編輯任務' : '建立任務'}
+      </DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
           <Grid size={{ xs: 12, md: 8 }}>
-            <TextField label="Task Title" fullWidth value={title} onChange={(e) => setTitle(e.target.value)} required />
+            <TextField label="任務名稱" fullWidth value={title} onChange={(e) => setTitle(e.target.value)} required />
           </Grid>
           <Grid size={{ xs: 12, md: 4 }}>
-            <TextField label="Alias Title (Max 10)" fullWidth value={aliasTitle} onChange={(e) => setAliasTitle(e.target.value)} inputProps={{ maxLength: 10 }} />
+            <TextField label="別名 (Alias Title)" fullWidth value={aliasTitle} onChange={(e) => setAliasTitle(e.target.value)} inputProps={{ maxLength: 10 }} />
+          </Grid>
+
+          {/* Parent Task Selector */}
+          <Grid size={{ xs: 12 }}>
+            <FormControl fullWidth size="small">
+              <InputLabel sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <AccountTree sx={{ fontSize: 18 }} /> 上層任務 (WBS 歸類)
+              </InputLabel>
+              <Select
+                value={currentParentId}
+                label="上層任務 (WBS 歸類)"
+                onChange={(e) => setCurrentParentId(e.target.value)}
+              >
+                <MenuItem value=""><em>無 (設為第一階任務)</em></MenuItem>
+                {validParentCandidates.map((t) => (
+                  <MenuItem key={t.id} value={t.id}>
+                    {t.title} {t.aliasTitle ? `(${t.aliasTitle})` : ''}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Grid>
           
           <Grid size={{ xs: 12 }}>
-            <TextField label="Description" fullWidth multiline rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+            <TextField label="任務詳細說明" fullWidth multiline rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+          </Grid>
+
+          <Grid size={{ xs: 12 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <LabelIcon fontSize="small" color="action" />
+                <Typography variant="body2" sx={{ fontWeight: 'bold' }}>標籤 (最多 3 個)</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
+                {labels.map((label) => (
+                    <Chip key={label} label={label} onDelete={() => handleDeleteLabel(label)} color="secondary" variant="outlined" size="small" />
+                ))}
+                {labels.length < 3 && (
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                        <TextField 
+                            size="small" 
+                            placeholder="新增標籤..." 
+                            value={newLabel} 
+                            onChange={(e) => setNewLabel(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddLabel())}
+                            sx={{ width: 150 }}
+                        />
+                        <Button size="small" onClick={handleAddLabel} disabled={!newLabel.trim()}>加入</Button>
+                    </Box>
+                )}
+            </Box>
           </Grid>
 
           <Grid size={{ xs: 12, md: 6 }}>
             <FormControl fullWidth>
-              <InputLabel>Main Category</InputLabel>
-              <Select value={mainCategory} label="Main Category" onChange={(e) => setMainCategory(e.target.value)}>
+              <InputLabel>任務分類</InputLabel>
+              <Select value={mainCategory} label="任務分類" onChange={(e) => setMainCategory(e.target.value)}>
                 {mainCategories.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
               </Select>
             </FormControl>
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
             <FormControl fullWidth>
-              <InputLabel>Sub Category</InputLabel>
-              <Select value={subCategory} label="Sub Category" onChange={(e) => setSubCategory(e.target.value)}>
+              <InputLabel>時間分類</InputLabel>
+              <Select value={subCategory} label="時間分類" onChange={(e) => setSubCategory(e.target.value)}>
                 {subCategories.map((sc) => <MenuItem key={sc} value={sc}>{sc}</MenuItem>)}
               </Select>
             </FormControl>
           </Grid>
 
           <Grid size={{ xs: 12, md: 6 }}>
-            <DatePicker label="Est. Start Date" value={estimatedStartDate} onChange={(newValue) => setEstimatedStartDate(newValue)} slotProps={{ textField: { fullWidth: true } }} />
+            <DatePicker label="預估開始日期" value={estimatedStartDate} onChange={(newValue) => setEstimatedStartDate(newValue)} slotProps={{ textField: { fullWidth: true } }} />
           </Grid>
            <Grid size={{ xs: 12, md: 6 }}>
-            <DatePicker label="Est. End Date" value={estimatedEndDate} onChange={(newValue) => setEstimatedEndDate(newValue)} slotProps={{ textField: { fullWidth: true } }} />
+            <DatePicker label="預估完成日期" value={estimatedEndDate} onChange={(newValue) => setEstimatedEndDate(newValue)} slotProps={{ textField: { fullWidth: true } }} />
           </Grid>
 
           <Grid size={{ xs: 12, md: 6 }}>
-            <TextField label="Assignee" fullWidth value={assignee} onChange={(e) => setAssignee(e.target.value)} />
+            <TextField label="任務負責人" fullWidth value={assignee} onChange={(e) => setAssignee(e.target.value)} />
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
-            <TextField label="Reporter" fullWidth value={reporter} onChange={(e) => setReporter(e.target.value)} />
+            <TextField label="任務指派人" fullWidth value={reporter} onChange={(e) => setReporter(e.target.value)} />
           </Grid>
            <Grid size={{ xs: 12, md: 6 }}>
             <FormControl fullWidth>
-              <InputLabel>Status</InputLabel>
-              <Select value={status} label="Status" onChange={(e) => setStatus(e.target.value as TaskStatus)}>
-                <MenuItem value="TODO">Todo</MenuItem>
-                <MenuItem value="IN_PROGRESS">In Progress</MenuItem>
-                <MenuItem value="PAUSED">Paused</MenuItem>
-                <MenuItem value="DONE">Done</MenuItem>
+              <InputLabel>任務狀態</InputLabel>
+              <Select value={status} label="任務狀態" onChange={(e) => setStatus(e.target.value as TaskStatus)}>
+                <MenuItem value="TODO">待處理 (Todo)</MenuItem>
+                <MenuItem value="IN_PROGRESS">進行中 (Ongoing)</MenuItem>
+                <MenuItem value="PAUSED">已暫停 (Paused)</MenuItem>
+                <MenuItem value="DONE">已完成 (Done)</MenuItem>
               </Select>
             </FormControl>
           </Grid>
 
-          {/* Work Outputs Section */}
           <Grid size={{ xs: 12 }}>
             <Divider sx={{ my: 2 }} />
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                <Typography variant="h6">Work Outputs</Typography>
-                <Button startIcon={<Add />} variant="outlined" size="small" onClick={handleAddOutput}>Add Output</Button>
+                <Typography variant="h6">工作產出 (Work Outputs)</Typography>
+                <Button startIcon={<Add />} variant="outlined" size="small" onClick={handleAddOutput}>新增產出</Button>
             </Box>
             
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -180,7 +270,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
                         <Grid container spacing={2} alignItems="center">
                             <Grid size={{ xs: 12, md: 4 }}>
                                 <TextField 
-                                    label="Output Name" 
+                                    label="產出名稱" 
                                     size="small" 
                                     fullWidth 
                                     required 
@@ -190,7 +280,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
                             </Grid>
                             <Grid size={{ xs: 12, md: 4 }}>
                                 <TextField 
-                                    label="Link (URL/Path)" 
+                                    label="相關連結 (URL/路徑)" 
                                     size="small" 
                                     fullWidth 
                                     value={output.link} 
@@ -200,7 +290,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
                             </Grid>
                             <Grid size={{ xs: 12, md: 3 }}>
                                 <TextField 
-                                    label="Completeness (%)" 
+                                    label="完成度 (%)" 
                                     size="small" 
                                     type="number"
                                     fullWidth 
@@ -223,7 +313,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
                 ))}
                 {outputs.length === 0 && (
                     <Typography variant="body2" color="textSecondary" align="center" sx={{ py: 2 }}>
-                        No work outputs recorded yet.
+                        目前尚無產出紀錄。
                     </Typography>
                 )}
             </Box>
@@ -231,8 +321,8 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
         </Grid>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={!title}>Save</Button>
+        <Button onClick={onClose}>取消</Button>
+        <Button onClick={handleSubmit} variant="contained" disabled={!title}>儲存任務</Button>
       </DialogActions>
     </Dialog>
   );

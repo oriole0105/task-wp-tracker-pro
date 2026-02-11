@@ -30,6 +30,7 @@ interface TaskState {
   
   updateWorkOutput: (taskId: string, outputId: string, updates: Partial<WorkOutput>) => void;
   importCategories: (data: CategoryData) => void;
+  importFullData: (data: { tasks: Task[], mainCategories: string[], subCategories: string[] }) => void;
   
   getTaskById: (id: string) => Task | undefined;
   getSubTasks: (parentId: string) => Task[];
@@ -49,6 +50,7 @@ export const useTaskStore = create<TaskState>()(
           timeLogs: [],
           totalTimeSpent: 0,
           outputs: [],
+          labels: [],
         };
         set((state) => ({ tasks: [...state.tasks, newTask] }));
       },
@@ -174,6 +176,12 @@ export const useTaskStore = create<TaskState>()(
       })),
 
       importCategories: (data) => set({ mainCategories: data.mainCategories, subCategories: data.subCategories }),
+
+      importFullData: (data) => set({
+        tasks: data.tasks || [],
+        mainCategories: data.mainCategories || [],
+        subCategories: data.subCategories || []
+      }),
 
       getTaskById: (id) => get().tasks.find((t) => t.id === id),
       getSubTasks: (parentId) => get().tasks.filter((t) => t.parentId === parentId),

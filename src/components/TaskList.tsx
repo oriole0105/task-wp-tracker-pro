@@ -31,37 +31,42 @@ interface IndexedTask extends Task {
 export const TaskList: React.FC = () => {
   const { tasks, mainCategories, subCategories, startTimer, stopTimer, deleteTask } = useTaskStore();
   
-  // Default: Show all unfinished tasks, ignore categories initially
   const [filterStatus, setFilterStatus] = useState<TaskStatus[]>(['TODO', 'IN_PROGRESS', 'PAUSED']);
-  const [selectedMainCats, setSelectedMainCats] = useState<string[]>([]); // Empty means ALL
-  const [selectedSubCats, setSelectedSubCats] = useState<string[]>([]);   // Empty means ALL
+  const [selectedMainCats, setSelectedMainCats] = useState<string[]>([]); 
+  const [selectedSubCats, setSelectedSubCats] = useState<string[]>([]);   
+  const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState<[Date | null, Date | null]>([null, null]);
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
   const [parentTaskId, setParentTaskId] = useState<string | undefined>(undefined);
 
+  // Extract unique labels from all tasks
+  const allAvailableLabels = useMemo(() => {
+    const labels = new Set<string>();
+    tasks.forEach(t => (t.labels || []).forEach(l => labels.add(l)));
+    return Array.from(labels).sort();
+  }, [tasks]);
+
   const processedTasks = useMemo(() => {
     const baseFiltered = tasks.filter(task => {
-      // 1. Status Filter (Always applied)
       if (filterStatus.length > 0 && !filterStatus.includes(task.status)) return false;
-      
-      // 2. Main Category Filter (If empty, show all)
       if (selectedMainCats.length > 0) {
           const taskCat = task.mainCategory || '其他';
           if (!selectedMainCats.includes(taskCat)) return false;
       }
-      
-      // 3. Sub Category Filter (If empty, show all)
       if (selectedSubCats.length > 0) {
           const taskSubCat = task.subCategory || '其他';
           if (!selectedSubCats.includes(taskSubCat)) return false;
       }
+      // Label Filter: Show task if it has AT LEAST ONE of the selected labels
+      if (selectedLabels.length > 0) {
+          const taskLabels = task.labels || [];
+          if (!taskLabels.some(l => selectedLabels.includes(l))) return false;
+      }
 
-      // 4. Date Range Filter
       if (dateRange[0] && task.estimatedStartDate && task.estimatedStartDate < dateRange[0].getTime()) return false;
       if (dateRange[1] && task.estimatedEndDate && task.estimatedEndDate > dateRange[1].getTime()) return false;
-      
       return true;
     });
 
@@ -85,10 +90,10 @@ export const TaskList: React.FC = () => {
     });
 
     return result;
-  }, [tasks, filterStatus, selectedMainCats, selectedSubCats, dateRange]);
+  }, [tasks, filterStatus, selectedMainCats, selectedSubCats, selectedLabels, dateRange]);
 
   const getActualDates = (task: Task) => {
-      if (task.timeLogs.length === 0) return { start: undefined, end: undefined };
+      if (!task.timeLogs || task.timeLogs.length === 0) return { start: undefined, end: undefined };
       const start = Math.min(...task.timeLogs.map(l => l.startTime));
       let end = undefined;
       if (task.status === 'DONE') {
@@ -116,44 +121,42 @@ export const TaskList: React.FC = () => {
       setIsFormOpen(true);
   }
 
-  // Define Category Options with "其他"
   const mainOptions = [...mainCategories, '其他'];
   const subOptions = [...subCategories, '其他'];
+
+  const statusMap: Record<TaskStatus, string> = {
+      'TODO': '待處理',
+      'IN_PROGRESS': '進行中',
+      'PAUSED': '已暫停',
+      'DONE': '已完成'
+  };
 
   return (
     <Box>
       <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'flex-start', flexWrap: 'wrap', p: 2, bgcolor: 'white', borderRadius: 1, boxShadow: 1 }}>
-        {/* Status Filter */}
-        <FormControl sx={{ minWidth: 150 }} size="small">
-          <InputLabel>Status</InputLabel>
-          <Select multiple value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as TaskStatus[])} renderValue={(selected) => selected.length === 4 ? 'All' : selected.join(', ')} label="Status">
+        <FormControl sx={{ minWidth: 120 }} size="small">
+          <InputLabel>狀態</InputLabel>
+          <Select multiple value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as TaskStatus[])} renderValue={(selected) => selected.length === 4 ? '全部' : selected.map(s => statusMap[s]).join(', ')} label="狀態">
              <Box sx={{ p: 1, display: 'flex', gap: 1 }}>
-                <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setFilterStatus(['TODO', 'IN_PROGRESS', 'PAUSED', 'DONE']); }}>All</Button>
-                <Button size="small" startIcon={<FilterListOff />} onClick={(e) => { e.stopPropagation(); setFilterStatus([]); }}>Clear</Button>
+                <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setFilterStatus(['TODO', 'IN_PROGRESS', 'PAUSED', 'DONE']); }}>全選</Button>
+                <Button size="small" startIcon={<FilterListOff />} onClick={(e) => { e.stopPropagation(); setFilterStatus([]); }}>清除</Button>
             </Box>
             <Divider />
-            {['TODO', 'IN_PROGRESS', 'PAUSED', 'DONE'].map((s) => (
-              <MenuItem key={s} value={s}>
-                <Checkbox checked={filterStatus.indexOf(s as TaskStatus) > -1} />
-                <ListItemText primary={s} />
+            {Object.entries(statusMap).map(([key, label]) => (
+              <MenuItem key={key} value={key}>
+                <Checkbox checked={filterStatus.indexOf(key as TaskStatus) > -1} />
+                <ListItemText primary={label} />
               </MenuItem>
             ))}
           </Select>
         </FormControl>
 
-        {/* Main Category Filter */}
-        <FormControl sx={{ minWidth: 180 }} size="small">
-          <InputLabel>Main Category</InputLabel>
-          <Select 
-            multiple 
-            value={selectedMainCats} 
-            onChange={(e) => setSelectedMainCats(e.target.value as string[])} 
-            renderValue={(selected) => selected.length === 0 ? 'All Categories' : `Selected (${selected.length})`} 
-            label="Main Category"
-          >
+        <FormControl sx={{ minWidth: 150 }} size="small">
+          <InputLabel>任務分類</InputLabel>
+          <Select multiple value={selectedMainCats} onChange={(e) => setSelectedMainCats(e.target.value as string[])} renderValue={(selected) => selected.length === 0 ? '全部任務分類' : `已選 (${selected.length})`} label="任務分類">
             <Box sx={{ p: 1, display: 'flex', gap: 1 }}>
-                <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setSelectedMainCats(mainOptions); }}>All</Button>
-                <Button size="small" startIcon={<FilterListOff />} onClick={(e) => { e.stopPropagation(); setSelectedMainCats([]); }}>Clear</Button>
+                <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setSelectedMainCats(mainOptions); }}>全選</Button>
+                <Button size="small" startIcon={<FilterListOff />} onClick={(e) => { e.stopPropagation(); setSelectedMainCats([]); }}>清除</Button>
             </Box>
             <Divider />
             {mainOptions.map((c) => (
@@ -165,19 +168,12 @@ export const TaskList: React.FC = () => {
           </Select>
         </FormControl>
 
-        {/* Sub Category Filter */}
-        <FormControl sx={{ minWidth: 180 }} size="small">
-          <InputLabel>Sub Category</InputLabel>
-          <Select 
-            multiple 
-            value={selectedSubCats} 
-            onChange={(e) => setSelectedSubCats(e.target.value as string[])} 
-            renderValue={(selected) => selected.length === 0 ? 'All Categories' : `Selected (${selected.length})`} 
-            label="Sub Category"
-          >
+        <FormControl sx={{ minWidth: 150 }} size="small">
+          <InputLabel>時間分類</InputLabel>
+          <Select multiple value={selectedSubCats} onChange={(e) => setSelectedSubCats(e.target.value as string[])} renderValue={(selected) => selected.length === 0 ? '全部時間分類' : `已選 (${selected.length})`} label="時間分類">
             <Box sx={{ p: 1, display: 'flex', gap: 1 }}>
-                <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setSelectedSubCats(subOptions); }}>All</Button>
-                <Button size="small" startIcon={<FilterListOff />} onClick={(e) => { e.stopPropagation(); setSelectedSubCats([]); }}>Clear</Button>
+                <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setSelectedSubCats(subOptions); }}>全選</Button>
+                <Button size="small" startIcon={<FilterListOff />} onClick={(e) => { e.stopPropagation(); setSelectedSubCats([]); }}>清除</Button>
             </Box>
             <Divider />
             {subOptions.map((sc) => (
@@ -188,11 +184,31 @@ export const TaskList: React.FC = () => {
             ))}
           </Select>
         </FormControl>
+
+        {/* Labels Filter */}
+        <FormControl sx={{ minWidth: 150 }} size="small">
+          <InputLabel>標籤篩選</InputLabel>
+          <Select multiple value={selectedLabels} onChange={(e) => setSelectedLabels(e.target.value as string[])} renderValue={(selected) => selected.length === 0 ? '全部標籤' : `已選 (${selected.length})`} label="標籤篩選">
+            <Box sx={{ p: 1, display: 'flex', gap: 1 }}>
+                <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setSelectedLabels(allAvailableLabels); }}>全選</Button>
+                <Button size="small" startIcon={<FilterListOff />} onClick={(e) => { e.stopPropagation(); setSelectedLabels([]); }}>清除</Button>
+            </Box>
+            <Divider />
+            {allAvailableLabels.length === 0 ? (
+                <MenuItem disabled>無可用標籤</MenuItem>
+            ) : allAvailableLabels.map((l) => (
+              <MenuItem key={l} value={l}>
+                <Checkbox checked={selectedLabels.includes(l)} />
+                <ListItemText primary={l} />
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
         
-        <DatePicker label="Est. Start Date" value={dateRange[0]} onChange={(d) => setDateRange([d, dateRange[1]])} slotProps={{ textField: { size: 'small' } }} />
-        <DatePicker label="Est. End Date" value={dateRange[1]} onChange={(d) => setDateRange([dateRange[0], d])} slotProps={{ textField: { size: 'small' } }} />
+        <DatePicker label="預估開始日" value={dateRange[0]} onChange={(d) => setDateRange([d, dateRange[1]])} slotProps={{ textField: { size: 'small' } }} />
+        <DatePicker label="預估完成日" value={dateRange[1]} onChange={(d) => setDateRange([dateRange[0], d])} slotProps={{ textField: { size: 'small' } }} />
         
-        <Button variant="contained" startIcon={<Add />} onClick={handleCreateNew} sx={{ ml: 'auto' }}>New Task</Button>
+        <Button variant="contained" startIcon={<Add />} onClick={handleCreateNew} sx={{ ml: 'auto' }}>建立任務</Button>
       </Box>
 
       <TableContainer component={Paper}>
@@ -200,19 +216,19 @@ export const TaskList: React.FC = () => {
           <TableHead sx={{ bgcolor: '#f5f5f5' }}>
             <TableRow>
               <TableCell width={80}>No.</TableCell>
-              <TableCell>Title</TableCell>
-              <TableCell>Category</TableCell>
-              <TableCell>Personnel</TableCell>
-              <TableCell>Actual Dates</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Time Spent</TableCell>
-              <TableCell align="right">Actions</TableCell>
+              <TableCell>任務名稱</TableCell>
+              <TableCell>分類</TableCell>
+              <TableCell>人員</TableCell>
+              <TableCell>實際日期</TableCell>
+              <TableCell>狀態</TableCell>
+              <TableCell>累計工時</TableCell>
+              <TableCell align="right">操作</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {processedTasks.length === 0 ? (
                  <TableRow>
-                    <TableCell colSpan={8} align="center" sx={{ py: 8 }}><Typography color="textSecondary">No tasks match your filters</Typography></TableCell>
+                    <TableCell colSpan={8} align="center" sx={{ py: 8 }}><Typography color="textSecondary">查無符合條件的任務</Typography></TableCell>
                  </TableRow>
             ) : processedTasks.map((task) => {
               const actual = getActualDates(task);
@@ -226,22 +242,27 @@ export const TaskList: React.FC = () => {
                   <TableCell>
                     <Box>
                       <Typography variant="body2" sx={{ fontWeight: task.depth === 1 ? 'bold' : 'normal' }}>{task.title}</Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{task.aliasTitle}</Typography>
+                      {task.aliasTitle && <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>別名: {task.aliasTitle}</Typography>}
+                      {task.labels && task.labels.length > 0 && (
+                          <Box sx={{ mt: 0.5, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                              {task.labels.map(l => <Chip key={l} label={l} size="small" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />)}
+                          </Box>
+                      )}
                     </Box>
                   </TableCell>
                   <TableCell>
-                      <Chip label={task.mainCategory || '其他'} size="small" variant="outlined" sx={{ mr: 0.5 }} />
-                      <Chip label={task.subCategory || '其他'} size="small" variant="outlined" color="primary" />
+                      <Chip label={task.mainCategory || '其他'} size="small" variant="outlined" sx={{ mr: 0.5 }} title="任務分類" />
+                      <Chip label={task.subCategory || '其他'} size="small" variant="outlined" color="primary" title="時間分類" />
                   </TableCell>
                   <TableCell>
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                               <Person sx={{ fontSize: 14, color: 'primary.main' }} />
-                              <Typography variant="caption" sx={{ fontWeight: 'bold' }}>A: {task.assignee || '-'}</Typography>
+                              <Typography variant="caption" sx={{ fontWeight: 'bold' }}>主: {task.assignee || '-'}</Typography>
                           </Box>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                               <Person sx={{ fontSize: 14, color: 'text.secondary' }} />
-                              <Typography variant="caption" color="textSecondary">R: {task.reporter || '-'}</Typography>
+                              <Typography variant="caption" color="textSecondary">派: {task.reporter || '-'}</Typography>
                           </Box>
                       </Box>
                   </TableCell>
@@ -249,16 +270,16 @@ export const TaskList: React.FC = () => {
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                               <EventAvailable sx={{ fontSize: 14, color: 'success.main' }} />
-                              <Typography variant="caption">S: {formatDate(actual.start)}</Typography>
+                              <Typography variant="caption">始: {formatDate(actual.start)}</Typography>
                           </Box>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                               <EventBusy sx={{ fontSize: 14, color: task.status === 'DONE' ? 'error.main' : 'text.disabled' }} />
-                              <Typography variant="caption">F: {formatDate(actual.end)}</Typography>
+                              <Typography variant="caption">終: {formatDate(actual.end)}</Typography>
                           </Box>
                       </Box>
                   </TableCell>
                   <TableCell>
-                    <Chip label={task.status} color={task.status === 'IN_PROGRESS' ? 'primary' : task.status === 'DONE' ? 'success' : task.status === 'PAUSED' ? 'warning' : 'default'} size="small" />
+                    <Chip label={statusMap[task.status]} color={task.status === 'IN_PROGRESS' ? 'primary' : task.status === 'DONE' ? 'success' : task.status === 'PAUSED' ? 'warning' : 'default'} size="small" />
                   </TableCell>
                   <TableCell sx={{ fontVariantNumeric: 'tabular-nums' }}>{formatTime(task.totalTimeSpent)}</TableCell>
                   <TableCell align="right">
@@ -269,9 +290,9 @@ export const TaskList: React.FC = () => {
                     )}
                     <IconButton size="small" onClick={() => handleEdit(task)}><Edit fontSize="small" /></IconButton>
                     {task.depth < 5 ? (
-                      <IconButton size="small" onClick={() => handleCreateSubTask(task.id)} title="Add Subtask"><SubdirectoryArrowRight fontSize="small" /></IconButton>
+                      <IconButton size="small" onClick={() => handleCreateSubTask(task.id)} title="建立子任務"><SubdirectoryArrowRight fontSize="small" /></IconButton>
                     ) : (
-                      <IconButton size="small" disabled title="Max depth reached"><SubdirectoryArrowRight fontSize="small" sx={{ opacity: 0.1 }} /></IconButton>
+                      <IconButton size="small" disabled title="已達最大深度"><SubdirectoryArrowRight fontSize="small" sx={{ opacity: 0.1 }} /></IconButton>
                     )}
                      <IconButton size="small" onClick={() => deleteTask(task.id)} color="error"><Delete fontSize="small" /></IconButton>
                   </TableCell>
