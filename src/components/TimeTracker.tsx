@@ -1,20 +1,23 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { 
-  Box, Paper, Typography, Button,  
+import {
+  Box, Paper, Typography, Button,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField,
-  ToggleButtonGroup, ToggleButton, FormControl, InputLabel, Select, MenuItem, IconButton
+  ToggleButtonGroup, ToggleButton, FormControl, InputLabel, Select, MenuItem, IconButton,
+  Tooltip, FormControlLabel, Switch
 } from '@mui/material';
 import { Pause, Palette, Height, ChevronLeft, ChevronRight } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers';
 import { useTaskStore } from '../store/useTaskStore';
 import { format, startOfDay, endOfDay, startOfWeek, addDays, isSameDay, addWeeks, subWeeks, subDays } from 'date-fns';
 import { getCategoryColor } from '../utils/colors';
-import type { TimeLog } from '../types';
+import { TaskForm } from './TaskForm';
+import type { TimeLog, Task } from '../types';
 
 interface TimeSlot extends TimeLog {
   taskId: string;
   taskTitle: string;
   aliasTitle: string;
+  taskDescription: string; // Added for tooltip
   mainCategory: string;
   subCategory: string;
   date: Date;
@@ -34,13 +37,13 @@ export const TimeTracker: React.FC = () => {
   const [view, setView] = useState<ViewType>('week5');
   const [colorMode, setColorMode] = useState<ColorMode>('sub');
   const [hourHeight, setHourHeight] = useState<ZoomLevel>(60);
+  const [showTooltip, setShowTooltip] = useState(true); // Default ON
   
   const activeTask = tasks.find(t => t.status === 'IN_PROGRESS');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const pixelsPerMinute = hourHeight / 60;
 
-  // Navigation Logic
   const handlePrev = () => {
     if (!selectedDate) return;
     if (view === 'day') setSelectedDate(subDays(selectedDate, 1));
@@ -56,15 +59,10 @@ export const TimeTracker: React.FC = () => {
   const displayDates = useMemo(() => {
     if (!selectedDate) return [];
     if (view === 'day') return [startOfDay(selectedDate)];
-    
-    // Start from Sunday (weekStartsOn: 0)
     const sunday = startOfWeek(selectedDate, { weekStartsOn: 0 });
-    
     if (view === 'week5') {
-        // Still only show Mon-Fri for 5D mode, but base calculation on Sunday
         return [1, 2, 3, 4, 5].map(i => addDays(sunday, i));
     }
-    
     return Array.from({ length: 7 }, (_, i) => addDays(sunday, i));
   }, [selectedDate, view]);
 
@@ -77,7 +75,7 @@ export const TimeTracker: React.FC = () => {
       const slots: TimeSlot[] = [];
 
       tasks.forEach(task => {
-        task.timeLogs.forEach(log => {
+        (task.timeLogs || []).forEach(log => {
           const effectiveStart = Math.max(log.startTime, dayStart);
           const effectiveEnd = Math.min(log.endTime || Date.now(), dayEnd);
 
@@ -90,6 +88,7 @@ export const TimeTracker: React.FC = () => {
                taskId: task.id,
                taskTitle: task.title,
                aliasTitle: task.aliasTitle,
+               taskDescription: task.description || '',
                mainCategory: task.mainCategory,
                subCategory: task.subCategory,
              });
@@ -111,32 +110,74 @@ export const TimeTracker: React.FC = () => {
       }
   }, [selectedDate, view, hourHeight, slotsByDate]);
 
+  // Edit Log State
   const [editingLog, setEditingLog] = useState<TimeSlot | null>(null);
+  const [editDate, setEditDate] = useState<Date | null>(null);
   const [editStart, setEditStart] = useState('');
   const [editEnd, setEditEnd] = useState('');
 
-  const handleSlotClick = (slot: TimeSlot) => {
+  // Task Form State (double-click)
+  const [taskFormOpen, setTaskFormOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
+
+  // Click timer ref：區分單擊 vs 雙擊
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const openTimeLogEditor = (slot: TimeSlot) => {
     setEditingLog(slot);
+    setEditDate(slot.date);
     setEditStart(format(slot.startTime, 'HH:mm'));
     const isRunning = !tasks.find(t => t.id === slot.taskId)?.timeLogs.find(l => l.id === slot.id)?.endTime;
     setEditEnd(isRunning ? '' : format(slot.endTime!, 'HH:mm'));
   };
 
+  const handleSlotClick = (slot: TimeSlot) => {
+    // 若已有待執行的單擊（雙擊第一次點），取消即可，讓 onDoubleClick 接手
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+      return;
+    }
+    clickTimerRef.current = setTimeout(() => {
+      clickTimerRef.current = null;
+      openTimeLogEditor(slot);
+    }, 250);
+  };
+
+  const handleSlotDoubleClick = (slot: TimeSlot) => {
+    // 取消尚未執行的單擊計時器
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
+    const task = tasks.find(t => t.id === slot.taskId);
+    if (task) {
+      setEditingTask(task);
+      setTaskFormOpen(true);
+    }
+  };
+
   const handleSaveLog = () => {
-    if (editingLog) {
+    if (editingLog && editDate) {
       const [sh, sm] = editStart.split(':').map(Number);
-      const newStart = new Date(editingLog.date);
+      const newStart = new Date(editDate);
       newStart.setHours(sh, sm, 0, 0);
 
       let newEnd = editingLog.endTime || 0;
       if (editEnd) {
          const [eh, em] = editEnd.split(':').map(Number);
-         const d = new Date(editingLog.date);
+         const d = new Date(editDate);
          d.setHours(eh, em, 0, 0);
          newEnd = d.getTime();
       } else {
         const originalLog = tasks.find(t => t.id === editingLog.taskId)?.timeLogs.find(l => l.id === editingLog.id);
-        if (originalLog?.endTime) newEnd = originalLog.endTime;
+        if (originalLog?.endTime) {
+            // Adjust the original end time to the new date
+            const d = new Date(editDate);
+            const oldEnd = new Date(originalLog.endTime);
+            d.setHours(oldEnd.getHours(), oldEnd.getMinutes(), 0, 0);
+            newEnd = d.getTime();
+        }
       }
       
       updateTimeLog(editingLog.taskId, editingLog.id, newStart.getTime(), newEnd);
@@ -156,7 +197,7 @@ export const TimeTracker: React.FC = () => {
   return (
     <Box sx={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexShrink: 0, gap: 2, flexWrap: 'wrap' }}>
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <IconButton size="small" onClick={handlePrev}><ChevronLeft /></IconButton>
                 <DatePicker 
@@ -208,10 +249,16 @@ export const TimeTracker: React.FC = () => {
                     </Select>
                 </FormControl>
             </Box>
+
+            <FormControlLabel
+                control={<Switch size="small" checked={showTooltip} onChange={(e) => setShowTooltip(e.target.checked)} />}
+                label={<Typography variant="caption">顯示說明</Typography>}
+                sx={{ ml: 1 }}
+            />
         </Box>
 
         {activeTask && (
-            <Paper elevation={1} sx={{ px: 2, py: 1, bgcolor: '#e3f2fd', display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Paper elevation={1} sx={{ px: 2, py: 1, bgcolor: 'action.selected', display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Typography variant="body2"><b>執行中:</b> {activeTask.title}</Typography>
                 <Button size="small" variant="contained" color="warning" startIcon={<Pause />} onClick={() => stopTimer(activeTask.id)}>停止</Button>
             </Paper>
@@ -223,14 +270,14 @@ export const TimeTracker: React.FC = () => {
             ref={scrollRef}
             sx={{ flexGrow: 1, overflowY: 'auto', position: 'relative', display: 'flex' }}
         >
-            <Box sx={{ width: 65, flexShrink: 0, borderRight: '1px solid #ddd', bgcolor: '#fafafa', position: 'sticky', left: 0, zIndex: 30 }}>
-                <Box sx={{ height: HEADER_HEIGHT, borderBottom: '2px solid #ddd' }} />
+            <Box sx={{ width: 65, flexShrink: 0, borderRight: 1, borderColor: 'divider', bgcolor: 'background.paper', position: 'sticky', left: 0, zIndex: 30 }}>
+                <Box sx={{ height: HEADER_HEIGHT, borderBottom: 2, borderColor: 'divider' }} />
                 {hours.map(hour => (
-                    <Box key={hour} sx={{ height: hourHeight, borderBottom: '1px solid #eee', position: 'relative' }}>
+                    <Box key={hour} sx={{ height: hourHeight, borderBottom: 1, borderColor: 'divider', position: 'relative' }}>
                         <Typography variant="caption" sx={{ position: 'absolute', top: -10, right: 8, color: 'text.secondary', fontWeight: 'bold', fontSize: '0.75rem' }}>
                             {hour < 10 ? `0${hour}` : hour}:00
                         </Typography>
-                        <Box sx={{ position: 'absolute', top: hourHeight/2, right: 0, width: 5, borderTop: '1px solid #ccc' }} />
+                        <Box sx={{ position: 'absolute', top: hourHeight/2, right: 0, width: 5, borderTop: 1, borderColor: 'divider' }} />
                     </Box>
                 ))}
             </Box>
@@ -241,18 +288,18 @@ export const TimeTracker: React.FC = () => {
                     const isToday = isSameDay(date, new Date());
 
                     return (
-                        <Box key={idx} sx={{ 
-                            flexGrow: 1, flexBasis: 0, 
-                            minWidth: view === 'day' ? '100%' : (view === 'week5' ? 150 : 120), 
-                            borderRight: '1px solid #ddd', 
+                        <Box key={idx} sx={{
+                            flexGrow: 1, flexBasis: 0,
+                            minWidth: view === 'day' ? '100%' : (view === 'week5' ? 150 : 120),
+                            borderRight: 1, borderColor: 'divider',
                             position: 'relative',
-                            bgcolor: isToday ? 'rgba(25, 118, 210, 0.02)' : 'transparent'
+                            bgcolor: isToday ? 'rgba(25, 118, 210, 0.04)' : 'transparent'
                         }}>
-                            <Box sx={{ 
-                                height: HEADER_HEIGHT, borderBottom: '2px solid #ddd', 
-                                bgcolor: isToday ? '#e3f2fd' : '#f5f5f5', 
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                                position: 'sticky', top: 0, zIndex: 25 
+                            <Box sx={{
+                                height: HEADER_HEIGHT, borderBottom: 2, borderColor: 'divider',
+                                bgcolor: isToday ? 'rgba(25, 118, 210, 0.18)' : 'action.hover',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                position: 'sticky', top: 0, zIndex: 25
                             }}>
                                 <Typography variant="subtitle2" sx={{ fontWeight: isToday ? 'bold' : 'normal', fontSize: '0.75rem' }}>
                                     {format(date, view === 'day' ? 'EEEE, MMMM do' : 'EEE MM/dd')}
@@ -260,8 +307,8 @@ export const TimeTracker: React.FC = () => {
                             </Box>
 
                             {hours.map(hour => (
-                                <Box key={hour} sx={{ height: hourHeight, borderBottom: '1px solid #e0e0e0', position: 'relative' }}>
-                                     <Box sx={{ position: 'absolute', top: hourHeight/2, left: 0, right: 0, borderTop: '1px dashed #f0f0f0' }} />
+                                <Box key={hour} sx={{ height: hourHeight, borderBottom: 1, borderColor: 'divider', position: 'relative' }}>
+                                     <Box sx={{ position: 'absolute', top: hourHeight/2, left: 0, right: 0, borderTop: '1px dashed', borderColor: 'action.disabledBackground' }} />
                                 </Box>
                             ))}
 
@@ -283,10 +330,10 @@ export const TimeTracker: React.FC = () => {
                                 const targetCategory = colorMode === 'main' ? slot.mainCategory : slot.subCategory;
                                 const blockColor = getCategoryColor(targetCategory);
 
-                                return (
+                                const slotContent = (
                                     <Box
-                                        key={slot.id}
                                         onClick={() => handleSlotClick(slot)}
+                                        onDoubleClick={() => handleSlotDoubleClick(slot)}
                                         sx={{
                                             position: 'absolute',
                                             top: HEADER_HEIGHT + topOffset,
@@ -319,6 +366,22 @@ export const TimeTracker: React.FC = () => {
                                         )}
                                     </Box>
                                 );
+
+                                return showTooltip ? (
+                                    <Tooltip 
+                                        key={slot.id} 
+                                        title={slot.taskDescription || '無任務說明'} 
+                                        arrow 
+                                        placement="right"
+                                        enterDelay={500}
+                                    >
+                                        {slotContent}
+                                    </Tooltip>
+                                ) : (
+                                    <React.Fragment key={slot.id}>
+                                        {slotContent}
+                                    </React.Fragment>
+                                );
                             })}
 
                             {isToday && (
@@ -336,12 +399,20 @@ export const TimeTracker: React.FC = () => {
         </Box>
       </Paper>
 
-      <Dialog open={!!editingLog} onClose={() => setEditingLog(null)}>
-        <DialogTitle>編輯時間紀錄 ({editingLog ? format(editingLog.date, 'MM/dd') : ''})</DialogTitle>
+      <Dialog open={!!editingLog} onClose={() => setEditingLog(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>編輯時間紀錄</DialogTitle>
         <DialogContent>
-           <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
-              <TextField label="開始 (HH:mm)" value={editStart} onChange={(e) => setEditStart(e.target.value)} />
-              <TextField label="結束 (HH:mm)" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} disabled={!editingLog?.endTime && editEnd === ''} />
+           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <DatePicker 
+                label="日期"
+                value={editDate}
+                onChange={(d) => setEditDate(d)}
+                slotProps={{ textField: { fullWidth: true, size: 'small' } }}
+              />
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <TextField label="開始 (HH:mm)" fullWidth value={editStart} onChange={(e) => setEditStart(e.target.value)} size="small" />
+                <TextField label="結束 (HH:mm)" fullWidth value={editEnd} onChange={(e) => setEditEnd(e.target.value)} disabled={!editingLog?.endTime && editEnd === ''} size="small" />
+              </Box>
            </Box>
         </DialogContent>
         <DialogActions>
@@ -350,6 +421,12 @@ export const TimeTracker: React.FC = () => {
           <Button variant="contained" onClick={handleSaveLog}>儲存</Button>
         </DialogActions>
       </Dialog>
+
+      <TaskForm
+        open={taskFormOpen}
+        onClose={() => { setTaskFormOpen(false); setEditingTask(undefined); }}
+        initialData={editingTask}
+      />
     </Box>
   );
 };

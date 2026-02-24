@@ -11,6 +11,8 @@ export interface WorkOutput {
   name: string;
   link?: string;
   completeness?: string;
+  mainCategory?: string;
+  subCategory?: string;
 }
 
 export interface Task {
@@ -37,6 +39,7 @@ export interface Task {
   parentId?: string;
   outputs: WorkOutput[];
   labels: string[]; // New field for flexible tagging, max 3
+  showInGantt: boolean;
 }
 
 export interface CategoryData {

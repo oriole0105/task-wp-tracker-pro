@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, FormControl, InputLabel, Select, MenuItem,
-  Grid, Box, Typography, IconButton, Paper, Divider, Chip
+  Grid, Box, Typography, IconButton, Paper, Divider, Chip,
+  FormControlLabel, Checkbox
 } from '@mui/material';
 import { Add, Delete, Link as LinkIcon, Label as LabelIcon, AccountTree } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -30,6 +31,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
   const [assignee, setAssignee] = useState('');
   const [reporter, setReporter] = useState('');
   const [status, setStatus] = useState<TaskStatus>('TODO');
+  const [showInGantt, setShowInGantt] = useState(true);
   const [outputs, setOutputs] = useState<WorkOutput[]>([]);
   const [labels, setLabels] = useState<string[]>([]);
   const [newLabel, setNewLabel] = useState('');
@@ -68,6 +70,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setAssignee(initialData.assignee);
       setReporter(initialData.reporter);
       setStatus(initialData.status);
+      setShowInGantt(initialData.showInGantt !== undefined ? initialData.showInGantt : true);
       setOutputs(initialData.outputs || []);
       setLabels(initialData.labels || []);
       setCurrentParentId(initialData.parentId || '');
@@ -81,6 +84,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setAliasTitle('');
       setDescription('');
       setStatus('TODO');
+      setShowInGantt(true);
       setOutputs([]);
       setLabels([]);
       setCurrentParentId(parentId);
@@ -95,6 +99,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setAssignee('');
       setReporter('');
       setStatus('TODO');
+      setShowInGantt(true);
       setOutputs([]);
       setLabels([]);
       setCurrentParentId('');
@@ -138,6 +143,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       assignee,
       reporter,
       status,
+      showInGantt,
       outputs,
       labels,
       parentId: currentParentId || undefined,
@@ -256,6 +262,17 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
               </Select>
             </FormControl>
           </Grid>
+          <Grid size={{ xs: 12, md: 6 }} sx={{ display: 'flex', alignItems: 'center' }}>
+            <FormControlLabel
+              control={
+                <Checkbox 
+                  checked={showInGantt} 
+                  onChange={(e) => setShowInGantt(e.target.checked)} 
+                />
+              }
+              label="顯示於週報與甘特圖"
+            />
+          </Grid>
 
           <Grid size={{ xs: 12 }}>
             <Divider sx={{ my: 2 }} />
@@ -266,7 +283,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
             
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {outputs.map((output) => (
-                    <Paper key={output.id} variant="outlined" sx={{ p: 2, bgcolor: '#fafafa' }}>
+                    <Paper key={output.id} variant="outlined" sx={{ p: 2, bgcolor: 'action.hover' }}>
                         <Grid container spacing={2} alignItems="center">
                             <Grid size={{ xs: 12, md: 4 }}>
                                 <TextField 

@@ -10,11 +10,9 @@ const COLORS = ['#1976d2', '#2e7d32', '#ed6c02', '#9c27b0', '#d32f2f', '#0288d1'
 
 const formatDuration = (totalMinutes: number) => {
   if (totalMinutes === 0) return '0分';
-  const days = Math.floor(totalMinutes / 1440);
-  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   const parts = [];
-  if (days > 0) parts.push(`${days}天`);
   if (hours > 0) parts.push(`${hours}時`);
   if (minutes > 0 || parts.length === 0) parts.push(`${minutes}分`);
   return parts.join(' ');
@@ -150,7 +148,7 @@ export const Stats: React.FC = () => {
                 )}
             </Grid>
             <Grid size={{ xs: 12, md: 5 }}>
-                <Paper variant="outlined" sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2, bgcolor: '#f0f7ff', borderColor: '#cce3ff' }}>
+                <Paper variant="outlined" sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2, bgcolor: 'action.selected', borderColor: 'primary.main' }}>
                     <AccessTime color="primary" />
                     <Box>
                         <Typography variant="caption" color="textSecondary" display="block">區間累計總工時</Typography>

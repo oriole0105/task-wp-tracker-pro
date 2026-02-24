@@ -163,7 +163,7 @@ export const CategoryManager: React.FC = () => {
     <Box sx={{ width: '100%', mx: 'auto' }}>
       <Typography variant="h4" gutterBottom>系統設定</Typography>
 
-      <Paper sx={{ p: 3, mb: 4, border: '1px solid #ddd', bgcolor: '#fcfcfc' }}>
+      <Paper sx={{ p: 3, mb: 4, border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
         <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Backup color="primary" /> 系統資料備份與還原
         </Typography>
@@ -204,8 +204,8 @@ export const CategoryManager: React.FC = () => {
         </Grid>
       </Grid>
       
-      <Paper sx={{ p: 2, mt: 4, bgcolor: '#fff3e0' }}>
-        <Typography variant="subtitle2" color="warning.dark">
+      <Paper sx={{ p: 2, mt: 4, bgcolor: 'warning.dark' }}>
+        <Typography variant="subtitle2" sx={{ color: 'warning.contrastText' }}>
           註：修改或刪除分類將會同步更新所有已使用該分類的現有任務。
         </Typography>
       </Paper>

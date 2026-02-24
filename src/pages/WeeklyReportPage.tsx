@@ -48,6 +48,9 @@ const WeeklyReportPage: React.FC = () => {
     const endTs = range.end.getTime();
 
     return tasks.filter(task => {
+      // 0. Show in Gantt Filter
+      if (task.showInGantt === false) return false;
+
       // 1. Level Filter
       const depth = getTaskDepth(task);
       if (!selectedLevels.includes(depth)) return false;
@@ -198,12 +201,12 @@ const WeeklyReportPage: React.FC = () => {
         </Box>
         <Grid container spacing={2}>
           <Grid size={{ xs: 12 }}>
-            <Box sx={{ width: '100%', overflow: 'auto', border: '1px solid #eee', borderRadius: 1, bgcolor: '#fff', display: 'flex', justifyContent: 'center', p: 2, mb: 2, minHeight: 200 }}>
+            <Box sx={{ width: '100%', overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'background.paper', display: 'flex', justifyContent: 'center', p: 2, mb: 2, minHeight: 200 }}>
               {imageUrl ? <img src={imageUrl} alt={title} style={{ maxWidth: '100%' }} /> : <Typography color="error">渲染失敗</Typography>}
             </Box>
           </Grid>
           <Grid size={{ xs: 12 }}>
-            <Box sx={{ bgcolor: '#f8f9fa', p: 1, borderRadius: 1 }}>
+            <Box sx={{ bgcolor: 'action.hover', p: 1, borderRadius: 1 }}>
                 <Typography variant="caption" color="textSecondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}><Code sx={{ fontSize: 14 }} /> PlantUML 原始碼</Typography>
                 <TextField fullWidth multiline rows={4} value={source} variant="standard" InputProps={{ readOnly: true, disableUnderline: true, sx: { fontFamily: 'monospace', fontSize: '0.75rem' } }} />
             </Box>
@@ -217,11 +220,11 @@ const WeeklyReportPage: React.FC = () => {
     <Box>
       <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Assessment fontSize="large" /> 週報素材生成</Typography>
       
-      <Paper sx={{ p: 2, mb: 3, bgcolor: '#f0f7ff' }}>
+      <Paper sx={{ p: 2, mb: 3, bgcolor: 'action.selected' }}>
           <Typography variant="body2"><b>統計範圍：</b>{format(range.start, 'yyyy-MM-dd')} ～ {format(range.end, 'yyyy-MM-dd')} (前後一個月)</Typography>
       </Paper>
 
-      <Paper sx={{ p: 3, mb: 4, border: '1px dashed #ccc' }}>
+      <Paper sx={{ p: 3, mb: 4, border: '1px dashed', borderColor: 'divider' }}>
           <Grid container spacing={3}>
               {/* Hierarchy Filter */}
               <Grid size={{ xs: 12 }}>
