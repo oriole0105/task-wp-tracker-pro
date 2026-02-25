@@ -10,6 +10,7 @@ import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
 import OutputReportPage from './pages/OutputReportPage';
 import WeeklyReportPage from './pages/WeeklyReportPage';
+import ArchivePage from './pages/ArchivePage';
 import { useTaskStore } from './store/useTaskStore';
 
 function App() {
@@ -38,6 +39,7 @@ function App() {
               <Route path="reports" element={<ReportsPage />} />
               <Route path="weekly" element={<WeeklyReportPage />} />
               <Route path="settings" element={<SettingsPage />} />
+              <Route path="archive" element={<ArchivePage />} />
             </Route>
           </Routes>
         </BrowserRouter>

@@ -32,7 +32,7 @@ type ColorMode = 'main' | 'sub';
 type ZoomLevel = 60 | 120;
 
 export const TimeTracker: React.FC = () => {
-  const { tasks, stopTimer, updateTimeLog, deleteTimeLog } = useTaskStore();
+  const { tasks, stopTimer, manualAddTimeLog, updateTimeLog, deleteTimeLog } = useTaskStore();
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [view, setView] = useState<ViewType>('week5');
   const [colorMode, setColorMode] = useState<ColorMode>('sub');
@@ -122,6 +122,48 @@ export const TimeTracker: React.FC = () => {
 
   // Click timer ref：區分單擊 vs 雙擊
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 快速新增時間紀錄（點擊空白格）
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickAddDate, setQuickAddDate] = useState<Date>(new Date());
+  const [quickAddStart, setQuickAddStart] = useState('');
+  const [quickAddEnd, setQuickAddEnd] = useState('');
+  const [quickAddTaskId, setQuickAddTaskId] = useState('');
+
+  const handleHourCellClick = (date: Date, hour: number, e: React.MouseEvent) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    // 依點擊位置計算分鐘，對齊至 15 分鐘
+    const rawMinutes = Math.round((y / hourHeight) * 60 / 15) * 15;
+    const minuteOffset = Math.min(rawMinutes, 59);
+    const totalMinutes = hour * 60 + minuteOffset;
+    const snappedH = Math.floor(totalMinutes / 60);
+    const snappedM = totalMinutes % 60;
+
+    const startTime = new Date(date);
+    startTime.setHours(snappedH, snappedM, 0, 0);
+    const endTime = new Date(startTime.getTime() + 60 * 60 * 1000); // 預設 +1 小時
+
+    const fmt = (h: number, m: number) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    setQuickAddDate(new Date(date));
+    setQuickAddStart(fmt(snappedH, snappedM));
+    setQuickAddEnd(fmt(endTime.getHours(), endTime.getMinutes()));
+    setQuickAddTaskId('');
+    setQuickAddOpen(true);
+  };
+
+  const handleQuickAddSave = () => {
+    if (!quickAddTaskId || !quickAddStart || !quickAddEnd) return;
+    const [sh, sm] = quickAddStart.split(':').map(Number);
+    const [eh, em] = quickAddEnd.split(':').map(Number);
+    const start = new Date(quickAddDate);
+    start.setHours(sh, sm, 0, 0);
+    const end = new Date(quickAddDate);
+    end.setHours(eh, em, 0, 0);
+    if (end <= start) return;
+    manualAddTimeLog(quickAddTaskId, start.getTime(), end.getTime());
+    setQuickAddOpen(false);
+  };
 
   const openTimeLogEditor = (slot: TimeSlot) => {
     setEditingLog(slot);
@@ -307,8 +349,19 @@ export const TimeTracker: React.FC = () => {
                             </Box>
 
                             {hours.map(hour => (
-                                <Box key={hour} sx={{ height: hourHeight, borderBottom: 1, borderColor: 'divider', position: 'relative' }}>
-                                     <Box sx={{ position: 'absolute', top: hourHeight/2, left: 0, right: 0, borderTop: '1px dashed', borderColor: 'action.disabledBackground' }} />
+                                <Box
+                                    key={hour}
+                                    onClick={(e) => handleHourCellClick(date, hour, e)}
+                                    sx={{
+                                        height: hourHeight,
+                                        borderBottom: 1,
+                                        borderColor: 'divider',
+                                        position: 'relative',
+                                        cursor: 'cell',
+                                        '&:hover': { bgcolor: 'action.hover' },
+                                    }}
+                                >
+                                    <Box sx={{ position: 'absolute', top: hourHeight/2, left: 0, right: 0, borderTop: '1px dashed', borderColor: 'action.disabledBackground', pointerEvents: 'none' }} />
                                 </Box>
                             ))}
 
@@ -332,8 +385,8 @@ export const TimeTracker: React.FC = () => {
 
                                 const slotContent = (
                                     <Box
-                                        onClick={() => handleSlotClick(slot)}
-                                        onDoubleClick={() => handleSlotDoubleClick(slot)}
+                                        onClick={(e) => { e.stopPropagation(); handleSlotClick(slot); }}
+                                        onDoubleClick={(e) => { e.stopPropagation(); handleSlotDoubleClick(slot); }}
                                         sx={{
                                             position: 'absolute',
                                             top: HEADER_HEIGHT + topOffset,
@@ -419,6 +472,57 @@ export const TimeTracker: React.FC = () => {
           <Button color="error" onClick={handleDeleteLog}>刪除紀錄</Button>
           <Button onClick={() => setEditingLog(null)}>取消</Button>
           <Button variant="contained" onClick={handleSaveLog}>儲存</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 快速新增時間紀錄 Dialog */}
+      <Dialog open={quickAddOpen} onClose={() => setQuickAddOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>新增時間紀錄</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <FormControl fullWidth size="small" required>
+              <InputLabel>選擇任務</InputLabel>
+              <Select
+                value={quickAddTaskId}
+                label="選擇任務"
+                onChange={(e) => setQuickAddTaskId(e.target.value)}
+              >
+                {tasks.map(t => (
+                  <MenuItem key={t.id} value={t.id}>
+                    {t.aliasTitle ? `${t.title} (${t.aliasTitle})` : t.title}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <DatePicker
+              label="日期"
+              value={quickAddDate}
+              onChange={(d) => d && setQuickAddDate(d)}
+              slotProps={{ textField: { fullWidth: true, size: 'small' } }}
+            />
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField label="開始 (HH:mm)" fullWidth value={quickAddStart} onChange={(e) => setQuickAddStart(e.target.value)} size="small" />
+              <TextField label="結束 (HH:mm)" fullWidth value={quickAddEnd} onChange={(e) => setQuickAddEnd(e.target.value)} size="small" />
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: 'space-between' }}>
+          <Button
+            size="small"
+            onClick={() => { setQuickAddOpen(false); setEditingTask(undefined); setTaskFormOpen(true); }}
+          >
+            建立新任務
+          </Button>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button onClick={() => setQuickAddOpen(false)}>取消</Button>
+            <Button
+              variant="contained"
+              onClick={handleQuickAddSave}
+              disabled={!quickAddTaskId || !quickAddStart || !quickAddEnd}
+            >
+              確認新增
+            </Button>
+          </Box>
         </DialogActions>
       </Dialog>
 

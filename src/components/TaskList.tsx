@@ -10,8 +10,9 @@ import {
   PlayArrow, Pause, Edit, Delete, Add, SubdirectoryArrowRight,
   FilterListOff, SelectAll, EventAvailable, EventBusy,
   KeyboardArrowDown, KeyboardArrowRight, UnfoldLess, UnfoldMore, EventNote,
-  Search, WarningAmber,
+  Search, WarningAmber, Archive, Inventory,
 } from '@mui/icons-material';
+import { Link as RouterLink } from 'react-router-dom';
 import { DatePicker } from '@mui/x-date-pickers';
 import { useTaskStore } from '../store/useTaskStore';
 import type { Task, TaskStatus } from '../types';
@@ -42,7 +43,7 @@ interface IndexedTask extends Task {
 }
 
 export const TaskList: React.FC = () => {
-  const { tasks, mainCategories, subCategories, startTimer, stopTimer, deleteTask, undo } = useTaskStore();
+  const { tasks, mainCategories, subCategories, startTimer, stopTimer, deleteTask, archiveTask, archiveAllDone, undo } = useTaskStore();
 
   const [filterStatus, setFilterStatus] = useState<TaskStatus[]>(['TODO', 'IN_PROGRESS', 'PAUSED']);
   const [selectedMainCats, setSelectedMainCats] = useState<string[]>([]);
@@ -87,10 +88,13 @@ export const TaskList: React.FC = () => {
     return Array.from(labels).sort();
   }, [tasks]);
 
+  const archivedCount = useMemo(() => tasks.filter(t => t.archived).length, [tasks]);
+
   const processedTasks = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
 
     const baseFiltered = tasks.filter(task => {
+      if (task.archived) return false; // 封存任務不出現於主列表
       if (q) {
         const matchTitle = task.title.toLowerCase().includes(q);
         const matchAlias = (task.aliasTitle || '').toLowerCase().includes(q);
@@ -139,6 +143,19 @@ export const TaskList: React.FC = () => {
           if (endedLogs.length > 0) end = Math.max(...endedLogs.map(l => l.endTime!));
       }
       return { start, end };
+  };
+
+  const handleArchiveTask = (task: Task) => {
+    archiveTask(task.id);
+    setSnackbarMsg(`已封存「${task.title}」`);
+    setSnackbarOpen(true);
+  };
+
+  const handleArchiveAllDone = () => {
+    const count = tasks.filter(t => t.status === 'DONE' && !t.archived).length;
+    archiveAllDone();
+    setSnackbarMsg(`已封存 ${count} 筆已完成任務`);
+    setSnackbarOpen(true);
   };
 
   const handleConfirmDelete = () => {
@@ -259,9 +276,39 @@ export const TaskList: React.FC = () => {
         <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>
             <Button variant="outlined" size="small" startIcon={<UnfoldLess />} onClick={collapseAll}>縮合</Button>
             <Button variant="outlined" size="small" startIcon={<UnfoldMore />} onClick={expandAll}>展開</Button>
+            <Tooltip title={tasks.some(t => t.status === 'DONE' && !t.archived) ? '將所有已完成任務移至封存庫' : '目前沒有可封存的已完成任務'}>
+              <span>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  color="secondary"
+                  startIcon={<Inventory fontSize="small" />}
+                  onClick={handleArchiveAllDone}
+                  disabled={!tasks.some(t => t.status === 'DONE' && !t.archived)}
+                >
+                  封存所有已完成
+                </Button>
+              </span>
+            </Tooltip>
             <Button variant="contained" size="small" startIcon={<Add />} onClick={() => { setEditingTask(undefined); setParentTaskId(undefined); setIsFormOpen(true); }}>建立任務</Button>
         </Box>
       </Box>
+
+      {/* Archive Banner */}
+      {archivedCount > 0 && (
+        <Alert
+          severity="info"
+          icon={<Archive fontSize="inherit" />}
+          sx={{ mb: 2 }}
+          action={
+            <Button component={RouterLink} to="/archive" size="small" color="inherit" startIcon={<Archive fontSize="small" />}>
+              前往封存庫
+            </Button>
+          }
+        >
+          已封存 <strong>{archivedCount}</strong> 筆任務（未顯示於此列表）
+        </Alert>
+      )}
 
       {/* Task Table */}
       <TableContainer component={Paper}>
@@ -364,6 +411,13 @@ export const TaskList: React.FC = () => {
                     {task.depth < 5 ? (
                       <IconButton size="small" onClick={() => { setEditingTask(undefined); setParentTaskId(task.id); setIsFormOpen(true); }} title="建立子任務"><SubdirectoryArrowRight fontSize="small" /></IconButton>
                     ) : <IconButton size="small" disabled><SubdirectoryArrowRight fontSize="small" sx={{ opacity: 0.1 }} /></IconButton>}
+                    {task.status === 'DONE' && (
+                      <Tooltip title="封存此任務">
+                        <IconButton size="small" color="secondary" onClick={() => handleArchiveTask(task)}>
+                          <Archive fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                     <IconButton size="small" onClick={() => setTaskToDelete(task)} color="error"><Delete fontSize="small" /></IconButton>
                   </TableCell>
                 </TableRow>

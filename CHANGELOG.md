@@ -4,9 +4,20 @@
 
 ---
 
-## [Unreleased] — 2026-02-25
+## [Unreleased] — 2026-02-26
 
 ### 新功能 (Features)
+
+- **任務封存庫（Archive）**
+  - `Task` 型別新增 `archived?: boolean`、`archivedAt?: number` 欄位
+  - **封存操作**：已完成任務行出現「封存」按鈕，封存後帶 6 秒 Undo Snackbar
+  - **批次封存**：工具列新增「封存所有已完成」按鈕（一鍵封存全部 DONE 任務及其後代）
+  - **封存庫橫幅**：任務管理頁有封存任務時顯示數量提示與「前往封存庫」連結
+  - **封存庫頁面**（`/archive`）：搜尋、分類篩選、依封存時間排序、顯示父任務脈絡、還原（帶 Undo）、永久刪除（含確認 Dialog）
+  - 導覽列新增「封存庫」入口
+  - Store 新增 `archiveTask`、`unarchiveTask`、`archiveAllDone` 三個 action
+  - 封存任務 timeLogs 仍計入統計報表，資料完整保留
+  - 修改範圍：`types/index.ts`、`useTaskStore.ts`、`TaskList.tsx`、`Layout.tsx`、`App.tsx`、新增 `ArchivePage.tsx`
 
 - **深色模式 (Dark Mode)**
   - 全域 MUI `ThemeProvider` 整合，支援 light / dark 雙主題
@@ -32,6 +43,14 @@
   - 以下操作會自動推送快照：`addTask`、`updateTask`、`deleteTask`、`manualAddTimeLog`、`updateTimeLog`、`deleteTimeLog`
   - 刪除任務後底部出現 Snackbar（6 秒），內含「復原」按鈕
   - 導覽列新增全域 Undo 按鈕，有歷史時才啟用
+
+- **日曆空白格點擊快速新增時間紀錄（Quick Add Time Log）**
+  - 點擊 Dashboard 任意空白時間格，彈出「新增時間紀錄」Dialog
+  - 自動預填日期與開始時間（依點擊位置計算，對齊至 15 分鐘），結束時間預設 +1 小時
+  - 下拉選擇現有任務，或點選「建立新任務」按鈕開啟 TaskForm
+  - 空白格 hover 顯示淡背景 + `cell` cursor，提示可點擊
+  - Timeslot block 點擊加入 `stopPropagation`，避免誤觸空白格邏輯
+  - 修改範圍：`TimeTracker.tsx`（新增 `quickAdd*` 狀態、`handleHourCellClick`、`handleQuickAddSave`、快速新增 Dialog）
 
 - **日曆 Timeslot 雙擊開啟任務編輯（Double-click to Edit Task）**
   - Dashboard 時間方塊現在支援兩種點擊行為：

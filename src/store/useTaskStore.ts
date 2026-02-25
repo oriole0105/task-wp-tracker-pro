@@ -41,6 +41,10 @@ interface TaskState {
   undo: () => void;
   toggleDarkMode: () => void;
 
+  archiveTask: (id: string) => void;
+  unarchiveTask: (id: string) => void;
+  archiveAllDone: () => void;
+
   getTaskById: (id: string) => Task | undefined;
   getSubTasks: (parentId: string) => Task[];
 }
@@ -203,6 +207,64 @@ export const useTaskStore = create<TaskState>()(
         mainCategories: data.mainCategories || [],
         subCategories: data.subCategories || [],
       }),
+
+      archiveTask: (id) => {
+        // 遞迴取得所有後代 ID（含自身）
+        const getAllDescendantIds = (tasks: Task[], rootId: string): string[] => {
+          const children = tasks.filter(t => t.parentId === rootId);
+          return [rootId, ...children.flatMap(c => getAllDescendantIds(tasks, c.id))];
+        };
+        const now = Date.now();
+        set((state) => {
+          const ids = new Set(getAllDescendantIds(state.tasks, id));
+          return {
+            _history: [...state._history.slice(-19), state.tasks],
+            tasks: state.tasks.map(t =>
+              ids.has(t.id) ? { ...t, archived: true, archivedAt: now } : t
+            ),
+          };
+        });
+      },
+
+      unarchiveTask: (id) => {
+        const getAllDescendantIds = (tasks: Task[], rootId: string): string[] => {
+          const children = tasks.filter(t => t.parentId === rootId);
+          return [rootId, ...children.flatMap(c => getAllDescendantIds(tasks, c.id))];
+        };
+        set((state) => {
+          const ids = new Set(getAllDescendantIds(state.tasks, id));
+          return {
+            _history: [...state._history.slice(-19), state.tasks],
+            tasks: state.tasks.map(t =>
+              ids.has(t.id) ? { ...t, archived: false, archivedAt: undefined } : t
+            ),
+          };
+        });
+      },
+
+      archiveAllDone: () => {
+        const now = Date.now();
+        set((state) => {
+          // 取得所有 DONE 任務的 ID
+          const doneIds = new Set(
+            state.tasks.filter(t => t.status === 'DONE' && !t.archived).map(t => t.id)
+          );
+          // 再遞迴展開後代
+          const getAllDescendantIds = (rootId: string): string[] => {
+            const children = state.tasks.filter(t => t.parentId === rootId);
+            return [rootId, ...children.flatMap(c => getAllDescendantIds(c.id))];
+          };
+          const allIds = new Set(
+            Array.from(doneIds).flatMap(id => getAllDescendantIds(id))
+          );
+          return {
+            _history: [...state._history.slice(-19), state.tasks],
+            tasks: state.tasks.map(t =>
+              allIds.has(t.id) && !t.archived ? { ...t, archived: true, archivedAt: now } : t
+            ),
+          };
+        });
+      },
 
       undo: () => {
         const history = get()._history;

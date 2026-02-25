@@ -3,7 +3,7 @@ import { AppBar, Toolbar, Typography, Container, Box, Button, IconButton, Toolti
 import { Link as RouterLink, Outlet } from 'react-router-dom';
 import {
   Dashboard, ListAlt, PieChart, Settings, AssignmentTurnedIn, Description,
-  DarkMode, LightMode, Undo,
+  DarkMode, LightMode, Undo, Inventory,
 } from '@mui/icons-material';
 import { useTaskStore } from '../store/useTaskStore';
 
@@ -32,6 +32,9 @@ export const Layout: React.FC = () => {
           </Button>
           <Button color="inherit" component={RouterLink} to="/weekly" startIcon={<Description />}>
             週報生成
+          </Button>
+          <Button color="inherit" component={RouterLink} to="/archive" startIcon={<Inventory />}>
+            封存庫
           </Button>
           <Button color="inherit" component={RouterLink} to="/settings" startIcon={<Settings />}>
             系統設定

@@ -38,8 +38,10 @@ export interface Task {
   
   parentId?: string;
   outputs: WorkOutput[];
-  labels: string[]; // New field for flexible tagging, max 3
+  labels: string[];
   showInGantt: boolean;
+  archived?: boolean;
+  archivedAt?: number;
 }
 
 export interface CategoryData {
