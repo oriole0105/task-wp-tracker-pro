@@ -7,10 +7,10 @@ import {
   Snackbar, Alert, Tooltip,
 } from '@mui/material';
 import {
-  PlayArrow, Pause, Edit, Delete, Add, SubdirectoryArrowRight,
+  Edit, Delete, Add, SubdirectoryArrowRight,
   FilterListOff, SelectAll, EventAvailable, EventBusy,
-  KeyboardArrowDown, KeyboardArrowRight, UnfoldLess, UnfoldMore, EventNote,
-  Search, WarningAmber, Archive, Inventory,
+  KeyboardArrowDown, KeyboardArrowRight, KeyboardArrowLeft, UnfoldLess, UnfoldMore, EventNote,
+  Search, WarningAmber, Archive, Inventory, ArrowUpward, ArrowDownward,
 } from '@mui/icons-material';
 import { Link as RouterLink } from 'react-router-dom';
 import { DatePicker } from '@mui/x-date-pickers';
@@ -27,13 +27,13 @@ const formatTime = (ms: number) => {
 };
 
 const formatDate = (ts: number | undefined) => {
-    if (!ts) return '-';
-    return format(ts, 'yyyy-MM-dd HH:mm');
+  if (!ts) return '-';
+  return format(ts, 'yyyy-MM-dd HH:mm');
 };
 
 const formatDateOnly = (ts: number | undefined) => {
-    if (!ts) return '-';
-    return format(ts, 'yyyy-MM-dd');
+  if (!ts) return '-';
+  return format(ts, 'yyyy-MM-dd');
 };
 
 interface IndexedTask extends Task {
@@ -43,11 +43,10 @@ interface IndexedTask extends Task {
 }
 
 export const TaskList: React.FC = () => {
-  const { tasks, mainCategories, subCategories, startTimer, stopTimer, deleteTask, archiveTask, archiveAllDone, undo } = useTaskStore();
+  const { tasks, timeslots, mainCategories, deleteTask, archiveTask, archiveAllDone, undo, reorderTask } = useTaskStore();
 
-  const [filterStatus, setFilterStatus] = useState<TaskStatus[]>(['TODO', 'IN_PROGRESS', 'PAUSED']);
+  const [filterStatus, setFilterStatus] = useState<TaskStatus[]>(['BACKLOG', 'TODO', 'IN_PROGRESS', 'PAUSED']);
   const [selectedMainCats, setSelectedMainCats] = useState<string[]>([]);
-  const [selectedSubCats, setSelectedSubCats] = useState<string[]>([]);
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState<[Date | null, Date | null]>([null, null]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -69,6 +68,18 @@ export const TaskList: React.FC = () => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMsg, setSnackbarMsg] = useState('');
 
+  // 預先計算每個任務的累計工時
+  const taskTotalTimeMap = useMemo(() => {
+    const map = new Map<string, number>();
+    timeslots.forEach(ts => {
+      if (ts.taskId && ts.endTime) {
+        const existing = map.get(ts.taskId) || 0;
+        map.set(ts.taskId, existing + (ts.endTime - ts.startTime));
+      }
+    });
+    return map;
+  }, [timeslots]);
+
   const toggleCollapse = (id: string) => {
     const newCollapsed = new Set(collapsedTaskIds);
     if (newCollapsed.has(id)) newCollapsed.delete(id);
@@ -78,8 +89,8 @@ export const TaskList: React.FC = () => {
 
   const expandAll = () => setCollapsedTaskIds(new Set());
   const collapseAll = () => {
-      const allParentIds = new Set(tasks.filter(t => tasks.some(child => child.parentId === t.id)).map(t => t.id));
-      setCollapsedTaskIds(allParentIds);
+    const allParentIds = new Set(tasks.filter(t => tasks.some(child => child.parentId === t.id)).map(t => t.id));
+    setCollapsedTaskIds(allParentIds);
   };
 
   const allAvailableLabels = useMemo(() => {
@@ -94,7 +105,7 @@ export const TaskList: React.FC = () => {
     const q = searchQuery.trim().toLowerCase();
 
     const baseFiltered = tasks.filter(task => {
-      if (task.archived) return false; // 封存任務不出現於主列表
+      if (task.archived) return false;
       if (q) {
         const matchTitle = task.title.toLowerCase().includes(q);
         const matchAlias = (task.aliasTitle || '').toLowerCase().includes(q);
@@ -103,7 +114,6 @@ export const TaskList: React.FC = () => {
       }
       if (filterStatus.length > 0 && !filterStatus.includes(task.status)) return false;
       if (selectedMainCats.length > 0 && !selectedMainCats.includes(task.mainCategory || '其他')) return false;
-      if (selectedSubCats.length > 0 && !selectedSubCats.includes(task.subCategory || '其他')) return false;
       if (selectedLabels.length > 0 && !(task.labels || []).some(l => selectedLabels.includes(l))) return false;
       if (dateRange[0] && task.estimatedStartDate && task.estimatedStartDate < dateRange[0].getTime()) return false;
       if (dateRange[1] && task.estimatedEndDate && task.estimatedEndDate > dateRange[1].getTime()) return false;
@@ -124,25 +134,25 @@ export const TaskList: React.FC = () => {
 
     const rootTasks = baseFiltered.filter(t => !t.parentId || !baseFiltered.find(p => p.id === t.parentId));
     rootTasks.forEach((task, i) => {
-        const currentIndex = `${i + 1}`;
-        const hasChildren = baseFiltered.some(t => t.parentId === task.id);
-        const isCurrentlyCollapsed = collapsedTaskIds.has(task.id);
-        result.push({ ...task, indexDisplay: currentIndex, depth: 1, hasChildren });
-        buildHierarchy(task.id, currentIndex, 2, isCurrentlyCollapsed);
+      const currentIndex = `${i + 1}`;
+      const hasChildren = baseFiltered.some(t => t.parentId === task.id);
+      const isCurrentlyCollapsed = collapsedTaskIds.has(task.id);
+      result.push({ ...task, indexDisplay: currentIndex, depth: 1, hasChildren });
+      buildHierarchy(task.id, currentIndex, 2, isCurrentlyCollapsed);
     });
     return result;
-  }, [tasks, filterStatus, selectedMainCats, selectedSubCats, selectedLabels, dateRange, collapsedTaskIds, searchQuery]);
+  }, [tasks, filterStatus, selectedMainCats, selectedLabels, dateRange, collapsedTaskIds, searchQuery]);
 
   const getActualDates = (task: Task) => {
-      const logs = task.timeLogs || [];
-      if (logs.length === 0) return { start: undefined, end: undefined };
-      const start = Math.min(...logs.map(l => l.startTime));
-      let end = undefined;
-      if (task.status === 'DONE') {
-          const endedLogs = logs.filter(l => l.endTime);
-          if (endedLogs.length > 0) end = Math.max(...endedLogs.map(l => l.endTime!));
-      }
-      return { start, end };
+    const logs = timeslots.filter(ts => ts.taskId === task.id);
+    if (logs.length === 0) return { start: undefined, end: undefined };
+    const start = Math.min(...logs.map(l => l.startTime));
+    let end = undefined;
+    if (task.status === 'DONE') {
+      const endedLogs = logs.filter(l => l.endTime);
+      if (endedLogs.length > 0) end = Math.max(...endedLogs.map(l => l.endTime!));
+    }
+    return { start, end };
   };
 
   const handleArchiveTask = (task: Task) => {
@@ -152,9 +162,9 @@ export const TaskList: React.FC = () => {
   };
 
   const handleArchiveAllDone = () => {
-    const count = tasks.filter(t => t.status === 'DONE' && !t.archived).length;
+    const count = tasks.filter(t => (t.status === 'DONE' || t.status === 'CANCELLED') && !t.archived).length;
     archiveAllDone();
-    setSnackbarMsg(`已封存 ${count} 筆已完成任務`);
+    setSnackbarMsg(`已封存 ${count} 筆已完成/已取消任務`);
     setSnackbarOpen(true);
   };
 
@@ -173,10 +183,12 @@ export const TaskList: React.FC = () => {
   };
 
   const statusMap: Record<TaskStatus, string> = {
-      'TODO': '待處理',
-      'IN_PROGRESS': '進行中',
-      'PAUSED': '已暫停',
-      'DONE': '已完成'
+    'BACKLOG': '待規劃',
+    'TODO': '待處理',
+    'IN_PROGRESS': '進行中',
+    'PAUSED': '已暫停',
+    'DONE': '已完成',
+    'CANCELLED': '已取消',
   };
 
   const now = Date.now();
@@ -204,10 +216,10 @@ export const TaskList: React.FC = () => {
 
         <FormControl sx={{ minWidth: 120 }} size="small">
           <InputLabel>狀態</InputLabel>
-          <Select multiple value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as TaskStatus[])} renderValue={(selected) => selected.length === 4 ? '全部' : selected.map(s => statusMap[s]).join(', ')} label="狀態">
-             <Box sx={{ p: 1, display: 'flex', gap: 1 }}>
-                <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setFilterStatus(['TODO', 'IN_PROGRESS', 'PAUSED', 'DONE']); }}>全選</Button>
-                <Button size="small" startIcon={<FilterListOff />} onClick={(e) => { e.stopPropagation(); setFilterStatus([]); }}>清除</Button>
+          <Select multiple value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as TaskStatus[])} renderValue={(selected) => selected.length === 6 ? '全部' : selected.map(s => statusMap[s]).join(', ')} label="狀態">
+            <Box sx={{ p: 1, display: 'flex', gap: 1 }}>
+              <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setFilterStatus(['BACKLOG', 'TODO', 'IN_PROGRESS', 'PAUSED', 'DONE', 'CANCELLED']); }}>全選</Button>
+              <Button size="small" startIcon={<FilterListOff />} onClick={(e) => { e.stopPropagation(); setFilterStatus([]); }}>清除</Button>
             </Box>
             <Divider />
             {Object.entries(statusMap).map(([key, label]) => (
@@ -223,8 +235,8 @@ export const TaskList: React.FC = () => {
           <InputLabel>任務分類</InputLabel>
           <Select multiple value={selectedMainCats} onChange={(e) => setSelectedMainCats(e.target.value as string[])} renderValue={(selected) => selected.length === 0 ? '全部任務分類' : `已選 (${selected.length})`} label="任務分類">
             <Box sx={{ p: 1, display: 'flex', gap: 1 }}>
-                <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setSelectedMainCats([...mainCategories, '其他']); }}>全選</Button>
-                <Button size="small" startIcon={<FilterListOff />} onClick={(e) => { e.stopPropagation(); setSelectedMainCats([]); }}>清除</Button>
+              <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setSelectedMainCats([...mainCategories, '其他']); }}>全選</Button>
+              <Button size="small" startIcon={<FilterListOff />} onClick={(e) => { e.stopPropagation(); setSelectedMainCats([]); }}>清除</Button>
             </Box>
             <Divider />
             {[...mainCategories, '其他'].map((c) => (
@@ -237,28 +249,11 @@ export const TaskList: React.FC = () => {
         </FormControl>
 
         <FormControl sx={{ minWidth: 150 }} size="small">
-          <InputLabel>時間分類</InputLabel>
-          <Select multiple value={selectedSubCats} onChange={(e) => setSelectedSubCats(e.target.value as string[])} renderValue={(selected) => selected.length === 0 ? '全部時間分類' : `已選 (${selected.length})`} label="時間分類">
-            <Box sx={{ p: 1, display: 'flex', gap: 1 }}>
-                <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setSelectedSubCats([...subCategories, '其他']); }}>全選</Button>
-                <Button size="small" startIcon={<FilterListOff />} onClick={(e) => { e.stopPropagation(); setSelectedSubCats([]); }}>清除</Button>
-            </Box>
-            <Divider />
-            {[...subCategories, '其他'].map((sc) => (
-              <MenuItem key={sc} value={sc}>
-                <Checkbox checked={selectedSubCats.includes(sc)} />
-                <ListItemText primary={sc} />
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
-        <FormControl sx={{ minWidth: 150 }} size="small">
           <InputLabel>標籤篩選</InputLabel>
           <Select multiple value={selectedLabels} onChange={(e) => setSelectedLabels(e.target.value as string[])} renderValue={(selected) => selected.length === 0 ? '全部標籤' : `已選 (${selected.length})`} label="標籤篩選">
             <Box sx={{ p: 1, display: 'flex', gap: 1 }}>
-                <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setSelectedLabels(allAvailableLabels); }}>全選</Button>
-                <Button size="small" startIcon={<FilterListOff />} onClick={(e) => { e.stopPropagation(); setSelectedLabels([]); }}>清除</Button>
+              <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setSelectedLabels(allAvailableLabels); }}>全選</Button>
+              <Button size="small" startIcon={<FilterListOff />} onClick={(e) => { e.stopPropagation(); setSelectedLabels([]); }}>清除</Button>
             </Box>
             <Divider />
             {allAvailableLabels.map((l) => (
@@ -274,23 +269,23 @@ export const TaskList: React.FC = () => {
         <DatePicker label="篩選完成日" value={dateRange[1]} onChange={(d) => setDateRange([dateRange[0], d])} slotProps={{ textField: { size: 'small' } }} />
 
         <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>
-            <Button variant="outlined" size="small" startIcon={<UnfoldLess />} onClick={collapseAll}>縮合</Button>
-            <Button variant="outlined" size="small" startIcon={<UnfoldMore />} onClick={expandAll}>展開</Button>
-            <Tooltip title={tasks.some(t => t.status === 'DONE' && !t.archived) ? '將所有已完成任務移至封存庫' : '目前沒有可封存的已完成任務'}>
-              <span>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  color="secondary"
-                  startIcon={<Inventory fontSize="small" />}
-                  onClick={handleArchiveAllDone}
-                  disabled={!tasks.some(t => t.status === 'DONE' && !t.archived)}
-                >
-                  封存所有已完成
-                </Button>
-              </span>
-            </Tooltip>
-            <Button variant="contained" size="small" startIcon={<Add />} onClick={() => { setEditingTask(undefined); setParentTaskId(undefined); setIsFormOpen(true); }}>建立任務</Button>
+          <Button variant="outlined" size="small" startIcon={<UnfoldLess />} onClick={collapseAll}>縮合</Button>
+          <Button variant="outlined" size="small" startIcon={<UnfoldMore />} onClick={expandAll}>展開</Button>
+          <Tooltip title={tasks.some(t => (t.status === 'DONE' || t.status === 'CANCELLED') && !t.archived) ? '將所有已完成/已取消任務移至封存庫' : '目前沒有可封存的任務'}>
+            <span>
+              <Button
+                variant="outlined"
+                size="small"
+                color="secondary"
+                startIcon={<Inventory fontSize="small" />}
+                onClick={handleArchiveAllDone}
+                disabled={!tasks.some(t => (t.status === 'DONE' || t.status === 'CANCELLED') && !t.archived)}
+              >
+                封存所有已完成
+              </Button>
+            </span>
+          </Tooltip>
+          <Button variant="contained" size="small" startIcon={<Add />} onClick={() => { setEditingTask(undefined); setParentTaskId(undefined); setIsFormOpen(true); }}>建立任務</Button>
         </Box>
       </Box>
 
@@ -317,7 +312,7 @@ export const TaskList: React.FC = () => {
             <TableRow>
               <TableCell width={120}>No.</TableCell>
               <TableCell>任務名稱</TableCell>
-              <TableCell>分類</TableCell>
+              <TableCell>任務分類</TableCell>
               <TableCell>預估日期</TableCell>
               <TableCell>實際日期</TableCell>
               <TableCell>狀態</TableCell>
@@ -327,74 +322,84 @@ export const TaskList: React.FC = () => {
           </TableHead>
           <TableBody>
             {processedTasks.length === 0 ? (
-                 <TableRow>
-                    <TableCell colSpan={8} align="center" sx={{ py: 8 }}><Typography color="textSecondary">查無符合條件的任務</Typography></TableCell>
-                 </TableRow>
+              <TableRow>
+                <TableCell colSpan={8} align="center" sx={{ py: 8 }}><Typography color="textSecondary">查無符合條件的任務</Typography></TableCell>
+              </TableRow>
             ) : processedTasks.map((task) => {
               const actual = getActualDates(task);
               const isCollapsed = collapsedTaskIds.has(task.id);
-              const isOverdue = task.status !== 'DONE' && !!task.estimatedEndDate && task.estimatedEndDate < now;
+              const isDoneOrCancelled = task.status === 'DONE' || task.status === 'CANCELLED';
+              const isOverdue = !isDoneOrCancelled && !!task.estimatedEndDate && task.estimatedEndDate < now;
+              const totalTime = taskTotalTimeMap.get(task.id) || 0;
 
               return (
                 <TableRow key={task.id} hover>
                   <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          {task.hasChildren ? (
-                              <IconButton size="small" onClick={() => toggleCollapse(task.id)} sx={{ mr: 0.5, p: 0.25 }}>
-                                  {isCollapsed ? <KeyboardArrowRight fontSize="small" /> : <KeyboardArrowDown fontSize="small" />}
-                              </IconButton>
-                          ) : <Box sx={{ width: 26 }} />}
-                          <Typography variant="body2" color="textSecondary" sx={{ fontVariantNumeric: 'tabular-nums', fontWeight: task.depth === 1 ? 'bold' : 'normal' }}>
-                              {task.indexDisplay}
-                          </Typography>
-                      </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      {task.hasChildren ? (
+                        <IconButton size="small" onClick={() => toggleCollapse(task.id)} sx={{ mr: 0.5, p: 0.25 }}>
+                          {isCollapsed ? <KeyboardArrowRight fontSize="small" /> : <KeyboardArrowDown fontSize="small" />}
+                        </IconButton>
+                      ) : <Box sx={{ width: 26 }} />}
+                      <Typography variant="body2" color="textSecondary" sx={{ fontVariantNumeric: 'tabular-nums', fontWeight: task.depth === 1 ? 'bold' : 'normal' }}>
+                        {task.indexDisplay}
+                      </Typography>
+                    </Box>
                   </TableCell>
                   <TableCell>
                     <Box>
                       <Typography variant="body2" sx={{ fontWeight: task.depth === 1 ? 'bold' : 'normal' }}>{task.title}</Typography>
                       {task.aliasTitle && <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>別名: {task.aliasTitle}</Typography>}
                       {task.labels && task.labels.length > 0 && (
-                          <Box sx={{ mt: 0.5, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                              {task.labels.map(l => <Chip key={l} label={l} size="small" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />)}
-                          </Box>
+                        <Box sx={{ mt: 0.5, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                          {task.labels.map(l => <Chip key={l} label={l} size="small" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />)}
+                        </Box>
                       )}
                     </Box>
                   </TableCell>
                   <TableCell>
-                      <Chip label={task.mainCategory || '其他'} size="small" variant="outlined" sx={{ mr: 0.5 }} />
-                      <Chip label={task.subCategory || '其他'} size="small" variant="outlined" color="primary" />
+                    <Chip label={task.mainCategory || '其他'} size="small" variant="outlined" />
                   </TableCell>
                   <TableCell>
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <EventNote sx={{ fontSize: 14, color: 'action.active' }} />
-                              <Typography variant="caption">始: {formatDateOnly(task.estimatedStartDate)}</Typography>
-                          </Box>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <EventNote sx={{ fontSize: 14, color: isOverdue ? 'error.main' : 'action.active' }} />
-                              <Typography variant="caption" color={isOverdue ? 'error' : 'inherit'}>末: {formatDateOnly(task.estimatedEndDate)}</Typography>
-                          </Box>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <EventNote sx={{ fontSize: 14, color: 'action.active' }} />
+                        <Typography variant="caption">始: {formatDateOnly(task.estimatedStartDate)}</Typography>
                       </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <EventNote sx={{ fontSize: 14, color: isOverdue ? 'error.main' : 'action.active' }} />
+                        <Typography variant="caption" color={isOverdue ? 'error' : 'inherit'}>末: {formatDateOnly(task.estimatedEndDate)}</Typography>
+                      </Box>
+                    </Box>
                   </TableCell>
                   <TableCell>
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <EventAvailable sx={{ fontSize: 14, color: 'success.main' }} />
-                              <Typography variant="caption">始: {formatDate(actual.start)}</Typography>
-                          </Box>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <EventBusy sx={{ fontSize: 14, color: task.status === 'DONE' ? 'error.main' : 'text.disabled' }} />
-                              <Typography variant="caption">終: {formatDate(actual.end)}</Typography>
-                          </Box>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <EventAvailable sx={{ fontSize: 14, color: 'success.main' }} />
+                        <Typography variant="caption">始: {formatDate(actual.start)}</Typography>
                       </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <EventBusy sx={{ fontSize: 14, color: isDoneOrCancelled ? 'error.main' : 'text.disabled' }} />
+                        <Typography variant="caption">終: {formatDate(actual.end)}</Typography>
+                      </Box>
+                    </Box>
                   </TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                       <Chip
                         label={statusMap[task.status]}
-                        color={task.status === 'IN_PROGRESS' ? 'primary' : task.status === 'DONE' ? 'success' : task.status === 'PAUSED' ? 'warning' : 'default'}
+                        color={
+                          task.status === 'IN_PROGRESS' ? 'primary' :
+                          task.status === 'DONE' ? 'success' :
+                          task.status === 'PAUSED' ? 'warning' :
+                          task.status === 'CANCELLED' ? 'error' :
+                          'default'
+                        }
                         size="small"
                       />
+                      {task.completeness !== undefined && (
+                        <Typography variant="caption" color="text.secondary">{task.completeness}%</Typography>
+                      )}
                       {isOverdue && (
                         <Tooltip title={`已逾期！預估完成：${formatDateOnly(task.estimatedEndDate)}`}>
                           <WarningAmber fontSize="small" color="error" />
@@ -402,16 +407,41 @@ export const TaskList: React.FC = () => {
                       )}
                     </Box>
                   </TableCell>
-                  <TableCell sx={{ fontVariantNumeric: 'tabular-nums' }}>{formatTime(task.totalTimeSpent)}</TableCell>
+                  <TableCell sx={{ fontVariantNumeric: 'tabular-nums' }}>{formatTime(totalTime)}</TableCell>
                   <TableCell align="right">
-                    {task.status === 'IN_PROGRESS' ? (
-                      <IconButton size="small" color="warning" onClick={() => stopTimer(task.id)}><Pause /></IconButton>
-                    ) : <IconButton size="small" color="primary" onClick={() => startTimer(task.id)}><PlayArrow /></IconButton>}
+                    {(() => {
+                      const allSiblings = tasks.filter(t => t.parentId === task.parentId && !t.archived);
+                      const sibIdx = allSiblings.findIndex(t => t.id === task.id);
+                      return (
+                        <Box component="span" sx={{ mr: 0.5 }}>
+                          <Tooltip title="向上移（與上一個同層任務互換）">
+                            <span>
+                              <IconButton size="small" disabled={sibIdx <= 0} onClick={() => reorderTask(task.id, 'up')}><ArrowUpward sx={{ fontSize: 14 }} /></IconButton>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title="向下移（與下一個同層任務互換）">
+                            <span>
+                              <IconButton size="small" disabled={sibIdx >= allSiblings.length - 1} onClick={() => reorderTask(task.id, 'down')}><ArrowDownward sx={{ fontSize: 14 }} /></IconButton>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title="向前（提升層級）">
+                            <span>
+                              <IconButton size="small" disabled={!task.parentId} onClick={() => reorderTask(task.id, 'promote')}><KeyboardArrowLeft sx={{ fontSize: 14 }} /></IconButton>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title="向後（降低層級，成為上一任務的子任務）">
+                            <span>
+                              <IconButton size="small" disabled={sibIdx <= 0} onClick={() => reorderTask(task.id, 'demote')}><KeyboardArrowRight sx={{ fontSize: 14 }} /></IconButton>
+                            </span>
+                          </Tooltip>
+                        </Box>
+                      );
+                    })()}
                     <IconButton size="small" onClick={() => { setEditingTask(task); setParentTaskId(undefined); setIsFormOpen(true); }}><Edit fontSize="small" /></IconButton>
                     {task.depth < 5 ? (
                       <IconButton size="small" onClick={() => { setEditingTask(undefined); setParentTaskId(task.id); setIsFormOpen(true); }} title="建立子任務"><SubdirectoryArrowRight fontSize="small" /></IconButton>
                     ) : <IconButton size="small" disabled><SubdirectoryArrowRight fontSize="small" sx={{ opacity: 0.1 }} /></IconButton>}
-                    {task.status === 'DONE' && (
+                    {isDoneOrCancelled && (
                       <Tooltip title="封存此任務">
                         <IconButton size="small" color="secondary" onClick={() => handleArchiveTask(task)}>
                           <Archive fontSize="small" />

@@ -1,0 +1,28 @@
+
+
+[plantuml]
+----
+@startmindmap
+* 工作拆解
+** 任務1
+*** 討論
+****[#lightblue] 結論
+*** 實作
+****[#lightblue] 產出
+** 會議
+***[#lightblue] 會議記錄
+** 討論
+***[#lightblue] 結論
+** 學習
+***[#lightblue] 學習筆記
+** IP
+*** vplan
+****[#lightblue] vplan文件
+*** coding
+****[#lightblue] env
+****[#lightblue] pattern
+****[#lightblue] scb
+*** debug
+****[#lightblue] jira
+@endmindmap
+----

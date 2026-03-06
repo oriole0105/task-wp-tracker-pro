@@ -1,45 +1,72 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import type { Task, TaskStatus, CategoryData, WorkOutput } from '../types';
+import type { Task, CategoryData, WorkOutput, Timeslot, OutputType } from '../types';
+
+const DEFAULT_OUTPUT_TYPES: OutputType[] = [
+  { id: 'ot-deliverable', name: '實體產出', isTangible: true },
+  { id: 'ot-decision',    name: '決策',     isTangible: false },
+  { id: 'ot-knowledge',   name: '知識/研究', isTangible: false },
+  { id: 'ot-process',     name: '流程/規範', isTangible: false },
+  { id: 'ot-other',       name: '其他',     isTangible: false },
+];
+
+interface HistorySnapshot {
+  tasks: Task[];
+  timeslots: Timeslot[];
+}
 
 interface TaskState {
   tasks: Task[];
+  timeslots: Timeslot[];
   mainCategories: string[];
   subCategories: string[];
+  outputTypes: OutputType[];
+  holidays: string[]; // yyyy-MM-dd 格式的假日/休息日清單
 
   // Undo history (not persisted)
-  _history: Task[][];
+  _history: HistorySnapshot[];
 
   // UI preferences (persisted)
   darkMode: boolean;
 
-  // Actions
-  addTask: (task: Omit<Task, 'id' | 'timeLogs' | 'totalTimeSpent'>) => void;
+  // Task Actions
+  addTask: (task: Omit<Task, 'id'>) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
-  
-  startTimer: (taskId: string) => void;
-  stopTimer: (taskId: string) => void;
-  manualAddTimeLog: (taskId: string, start: number, end: number) => void;
-  updateTimeLog: (taskId: string, logId: string, start: number, end: number) => void;
-  deleteTimeLog: (taskId: string, logId: string) => void;
-  
+
+  // Timeslot Actions
+  addTimeslot: (data: Omit<Timeslot, 'id'>) => void;
+  updateTimeslot: (id: string, updates: Partial<Timeslot>) => void;
+  deleteTimeslot: (id: string) => void;
+  getTaskTotalTime: (taskId: string) => number;
+
   // Category Actions
   addMainCategory: (name: string) => void;
   updateMainCategory: (oldName: string, newName: string) => void;
   deleteMainCategory: (name: string) => void;
-  
+
   addSubCategory: (name: string) => void;
   updateSubCategory: (oldName: string, newName: string) => void;
   deleteSubCategory: (name: string) => void;
-  
+
   updateWorkOutput: (taskId: string, outputId: string, updates: Partial<WorkOutput>) => void;
   importCategories: (data: CategoryData) => void;
-  importFullData: (data: { tasks: Task[], mainCategories: string[], subCategories: string[] }) => void;
+  importFullData: (data: { tasks: Task[], timeslots?: Timeslot[], mainCategories: string[], subCategories: string[], outputTypes?: OutputType[], holidays?: string[] }) => void;
+
+  // OutputType Actions
+  addOutputType: (data: Omit<OutputType, 'id'>) => void;
+  updateOutputType: (id: string, updates: Partial<Omit<OutputType, 'id'>>) => void;
+  deleteOutputType: (id: string) => void;
+
+  // Holiday Actions
+  addHoliday: (date: string) => void;
+  deleteHoliday: (date: string) => void;
 
   undo: () => void;
   toggleDarkMode: () => void;
+
+  reorderTask: (id: string, direction: 'up' | 'down' | 'promote' | 'demote') => void;
 
   archiveTask: (id: string) => void;
   unarchiveTask: (id: string) => void;
@@ -53,8 +80,11 @@ export const useTaskStore = create<TaskState>()(
   persist(
     (set, get) => ({
       tasks: [],
+      timeslots: [],
       mainCategories: ['Development', 'Meeting', 'General'],
       subCategories: ['Frontend', 'Backend', 'Research', 'Planning', 'Urgent'],
+      outputTypes: DEFAULT_OUTPUT_TYPES,
+      holidays: [],
       _history: [],
       darkMode: false,
 
@@ -62,133 +92,73 @@ export const useTaskStore = create<TaskState>()(
         const newTask: Task = {
           ...taskData,
           id: uuidv4(),
-          timeLogs: [],
-          totalTimeSpent: 0,
-          outputs: [],
-          labels: [],
+          outputs: taskData.outputs ?? [],
+          labels: taskData.labels ?? [],
+          showInWbs: taskData.showInWbs ?? true,
           showInGantt: taskData.showInGantt ?? true,
         };
         set((state) => ({
-          _history: [...state._history.slice(-19), state.tasks],
+          _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
           tasks: [...state.tasks, newTask],
         }));
       },
 
       updateTask: (id, updates) => {
         set((state) => ({
-          _history: [...state._history.slice(-19), state.tasks],
+          _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
           tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)),
         }));
       },
 
       deleteTask: (id) => {
         set((state) => ({
-          _history: [...state._history.slice(-19), state.tasks],
+          _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
           tasks: state.tasks.filter((t) => t.id !== id && t.parentId !== id),
         }));
       },
 
-      startTimer: (taskId) => {
-        const now = Date.now();
-        set((state) => {
-          const newTasks = state.tasks.map((task) => {
-            if (task.status === 'IN_PROGRESS') {
-              const activeLogIndex = task.timeLogs.findIndex((log) => !log.endTime);
-              if (activeLogIndex !== -1) {
-                const updatedLogs = [...task.timeLogs];
-                updatedLogs[activeLogIndex] = { ...updatedLogs[activeLogIndex], endTime: now };
-                const totalTime = updatedLogs.reduce((acc, log) => acc + ((log.endTime || now) - log.startTime), 0);
-                return { ...task, status: 'PAUSED' as TaskStatus, timeLogs: updatedLogs, totalTimeSpent: totalTime };
-              }
-            }
-            if (task.id === taskId) {
-               return {
-                ...task,
-                status: 'IN_PROGRESS' as TaskStatus,
-                actualStartDate: task.actualStartDate || now,
-                timeLogs: [...task.timeLogs, { id: uuidv4(), startTime: now }],
-              };
-            }
-            return task;
-          });
-          return { tasks: newTasks };
-        });
-      },
-
-      stopTimer: (taskId) => {
-        const now = Date.now();
+      // Timeslot Actions
+      addTimeslot: (data) => {
+        const newTimeslot: Timeslot = { ...data, id: uuidv4() };
         set((state) => ({
-            tasks: state.tasks.map((task) => {
-              if (task.id === taskId) {
-                const activeLogIndex = task.timeLogs.findIndex((log) => !log.endTime);
-                if (activeLogIndex !== -1) {
-                   const updatedLogs = [...task.timeLogs];
-                    updatedLogs[activeLogIndex] = { ...updatedLogs[activeLogIndex], endTime: now };
-                    const totalTime = updatedLogs.reduce((acc, log) => acc + ((log.endTime || now) - log.startTime), 0);
-                    return { ...task, status: 'PAUSED' as TaskStatus, timeLogs: updatedLogs, totalTimeSpent: totalTime };
-                }
-              }
-              return task;
-            }),
+          _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
+          timeslots: [...state.timeslots, newTimeslot],
         }));
       },
 
-      manualAddTimeLog: (taskId, start, end) => {
+      updateTimeslot: (id, updates) => {
         set((state) => ({
-          _history: [...state._history.slice(-19), state.tasks],
-          tasks: state.tasks.map((task) => {
-            if (task.id === taskId) {
-              const updatedLogs = [...task.timeLogs, { id: uuidv4(), startTime: start, endTime: end }];
-              const totalTime = updatedLogs.reduce((acc, log) => acc + ((log.endTime || 0) - log.startTime), 0);
-              return { ...task, timeLogs: updatedLogs, totalTimeSpent: totalTime };
-            }
-            return task;
-          }),
+          _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
+          timeslots: state.timeslots.map(ts => ts.id === id ? { ...ts, ...updates } : ts),
         }));
       },
 
-      updateTimeLog: (taskId, logId, start, end) => {
+      deleteTimeslot: (id) => {
         set((state) => ({
-          _history: [...state._history.slice(-19), state.tasks],
-          tasks: state.tasks.map((task) => {
-            if (task.id === taskId) {
-              const updatedLogs = task.timeLogs.map((log) =>
-                log.id === logId ? { ...log, startTime: start, endTime: end } : log
-              );
-              const totalTime = updatedLogs.reduce((acc, log) => acc + ((log.endTime || 0) - log.startTime), 0);
-              return { ...task, timeLogs: updatedLogs, totalTimeSpent: totalTime };
-            }
-            return task;
-          }),
+          _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
+          timeslots: state.timeslots.filter(ts => ts.id !== id),
         }));
       },
 
-      deleteTimeLog: (taskId, logId) => {
-        set((state) => ({
-          _history: [...state._history.slice(-19), state.tasks],
-          tasks: state.tasks.map((task) => {
-            if (task.id === taskId) {
-              const updatedLogs = task.timeLogs.filter((log) => log.id !== logId);
-              const totalTime = updatedLogs.reduce((acc, log) => acc + ((log.endTime || 0) - log.startTime), 0);
-              return { ...task, timeLogs: updatedLogs, totalTimeSpent: totalTime };
-            }
-            return task;
-          }),
-        }));
+      getTaskTotalTime: (taskId) => {
+        const { timeslots } = get();
+        return timeslots
+          .filter(ts => ts.taskId === taskId && ts.endTime)
+          .reduce((acc, ts) => acc + (ts.endTime! - ts.startTime), 0);
       },
 
       // Category Actions
       addMainCategory: (name) => set(s => ({ mainCategories: [...new Set([...s.mainCategories, name])] })),
-      updateMainCategory: (old, newVal) => set(s => ({ 
-          mainCategories: s.mainCategories.map(c => c === old ? newVal : c),
-          tasks: s.tasks.map(t => t.mainCategory === old ? { ...t, mainCategory: newVal } : t)
+      updateMainCategory: (old, newVal) => set(s => ({
+        mainCategories: s.mainCategories.map(c => c === old ? newVal : c),
+        tasks: s.tasks.map(t => t.mainCategory === old ? { ...t, mainCategory: newVal } : t)
       })),
       deleteMainCategory: (name) => set(s => ({ mainCategories: s.mainCategories.filter(c => c !== name) })),
 
       addSubCategory: (name) => set(s => ({ subCategories: [...new Set([...s.subCategories, name])] })),
-      updateSubCategory: (old, newVal) => set(s => ({ 
-          subCategories: s.subCategories.map(c => c === old ? newVal : c),
-          tasks: s.tasks.map(t => t.subCategory === old ? { ...t, subCategory: newVal } : t)
+      updateSubCategory: (old, newVal) => set(s => ({
+        subCategories: s.subCategories.map(c => c === old ? newVal : c),
+        timeslots: s.timeslots.map(ts => ts.subCategory === old ? { ...ts, subCategory: newVal } : ts)
       })),
       deleteSubCategory: (name) => set(s => ({ subCategories: s.subCategories.filter(c => c !== name) })),
 
@@ -204,12 +174,82 @@ export const useTaskStore = create<TaskState>()(
       importFullData: (data) => set({
         _history: [],
         tasks: data.tasks || [],
+        timeslots: data.timeslots || [],
         mainCategories: data.mainCategories || [],
         subCategories: data.subCategories || [],
+        outputTypes: data.outputTypes || DEFAULT_OUTPUT_TYPES,
+        holidays: data.holidays || [],
       }),
 
+      addOutputType: (data) => set(s => ({
+        outputTypes: [...s.outputTypes, { ...data, id: uuidv4() }],
+      })),
+      updateOutputType: (id, updates) => set(s => ({
+        outputTypes: s.outputTypes.map(ot => ot.id === id ? { ...ot, ...updates } : ot),
+      })),
+      deleteOutputType: (id) => set(s => ({
+        outputTypes: s.outputTypes.filter(ot => ot.id !== id),
+      })),
+
+      addHoliday: (date) => set(s => ({
+        holidays: [...new Set([...s.holidays, date])].sort(),
+      })),
+      deleteHoliday: (date) => set(s => ({
+        holidays: s.holidays.filter(d => d !== date),
+      })),
+
+      reorderTask: (id, direction) => {
+        set((state) => {
+          const tasks = [...state.tasks];
+          const idx = tasks.findIndex(t => t.id === id);
+          if (idx === -1) return {};
+          const task = tasks[idx];
+          const siblings = tasks.filter(t => t.parentId === task.parentId);
+          const sibIdx = siblings.findIndex(t => t.id === id);
+          const snapshot = { tasks: state.tasks, timeslots: state.timeslots };
+
+          if (direction === 'up') {
+            if (sibIdx === 0) return {};
+            const prevIdx = tasks.findIndex(t => t.id === siblings[sibIdx - 1].id);
+            [tasks[idx], tasks[prevIdx]] = [tasks[prevIdx], tasks[idx]];
+            return { _history: [...state._history.slice(-19), snapshot], tasks };
+          }
+          if (direction === 'down') {
+            if (sibIdx === siblings.length - 1) return {};
+            const nextIdx = tasks.findIndex(t => t.id === siblings[sibIdx + 1].id);
+            [tasks[idx], tasks[nextIdx]] = [tasks[nextIdx], tasks[idx]];
+            return { _history: [...state._history.slice(-19), snapshot], tasks };
+          }
+          if (direction === 'promote') {
+            if (!task.parentId) return {};
+            const parent = tasks.find(t => t.id === task.parentId);
+            if (!parent) return {};
+            const updatedTask = { ...task, parentId: parent.parentId };
+            tasks.splice(idx, 1);
+            const parentIdx = tasks.findIndex(t => t.id === parent.id);
+            tasks.splice(parentIdx + 1, 0, updatedTask);
+            return { _history: [...state._history.slice(-19), snapshot], tasks };
+          }
+          if (direction === 'demote') {
+            if (sibIdx === 0) return {};
+            const prevSib = siblings[sibIdx - 1];
+            const updatedTask = { ...task, parentId: prevSib.id };
+            tasks.splice(idx, 1);
+            const getAllDescIds = (pid: string): string[] => {
+              const children = tasks.filter(t => t.parentId === pid);
+              return [pid, ...children.flatMap(c => getAllDescIds(c.id))];
+            };
+            const descIds = getAllDescIds(prevSib.id);
+            let insertIdx = tasks.findIndex(t => t.id === prevSib.id);
+            tasks.forEach((t, i) => { if (descIds.includes(t.id)) insertIdx = i; });
+            tasks.splice(insertIdx + 1, 0, updatedTask);
+            return { _history: [...state._history.slice(-19), snapshot], tasks };
+          }
+          return {};
+        });
+      },
+
       archiveTask: (id) => {
-        // 遞迴取得所有後代 ID（含自身）
         const getAllDescendantIds = (tasks: Task[], rootId: string): string[] => {
           const children = tasks.filter(t => t.parentId === rootId);
           return [rootId, ...children.flatMap(c => getAllDescendantIds(tasks, c.id))];
@@ -218,7 +258,7 @@ export const useTaskStore = create<TaskState>()(
         set((state) => {
           const ids = new Set(getAllDescendantIds(state.tasks, id));
           return {
-            _history: [...state._history.slice(-19), state.tasks],
+            _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
             tasks: state.tasks.map(t =>
               ids.has(t.id) ? { ...t, archived: true, archivedAt: now } : t
             ),
@@ -234,7 +274,7 @@ export const useTaskStore = create<TaskState>()(
         set((state) => {
           const ids = new Set(getAllDescendantIds(state.tasks, id));
           return {
-            _history: [...state._history.slice(-19), state.tasks],
+            _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
             tasks: state.tasks.map(t =>
               ids.has(t.id) ? { ...t, archived: false, archivedAt: undefined } : t
             ),
@@ -245,11 +285,9 @@ export const useTaskStore = create<TaskState>()(
       archiveAllDone: () => {
         const now = Date.now();
         set((state) => {
-          // 取得所有 DONE 任務的 ID
           const doneIds = new Set(
-            state.tasks.filter(t => t.status === 'DONE' && !t.archived).map(t => t.id)
+            state.tasks.filter(t => (t.status === 'DONE' || t.status === 'CANCELLED') && !t.archived).map(t => t.id)
           );
-          // 再遞迴展開後代
           const getAllDescendantIds = (rootId: string): string[] => {
             const children = state.tasks.filter(t => t.parentId === rootId);
             return [rootId, ...children.flatMap(c => getAllDescendantIds(c.id))];
@@ -258,7 +296,7 @@ export const useTaskStore = create<TaskState>()(
             Array.from(doneIds).flatMap(id => getAllDescendantIds(id))
           );
           return {
-            _history: [...state._history.slice(-19), state.tasks],
+            _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
             tasks: state.tasks.map(t =>
               allIds.has(t.id) && !t.archived ? { ...t, archived: true, archivedAt: now } : t
             ),
@@ -269,8 +307,8 @@ export const useTaskStore = create<TaskState>()(
       undo: () => {
         const history = get()._history;
         if (history.length === 0) return;
-        const prevTasks = history[history.length - 1];
-        set({ tasks: prevTasks, _history: history.slice(0, -1) });
+        const prev = history[history.length - 1];
+        set({ tasks: prev.tasks, timeslots: prev.timeslots, _history: history.slice(0, -1) });
       },
 
       toggleDarkMode: () => set((state) => ({ darkMode: !state.darkMode })),
@@ -283,8 +321,11 @@ export const useTaskStore = create<TaskState>()(
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         tasks: state.tasks,
+        timeslots: state.timeslots,
         mainCategories: state.mainCategories,
         subCategories: state.subCategories,
+        outputTypes: state.outputTypes,
+        holidays: state.holidays,
         darkMode: state.darkMode,
       }),
     }

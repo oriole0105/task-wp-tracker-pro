@@ -1,19 +1,23 @@
 import React, { useState } from 'react';
-import { 
-  Box, Typography, Button, TextField, Paper, 
+import {
+  Box, Typography, Button, TextField, Paper,
   List, ListItem, ListItemText, IconButton, Alert,
-  Grid, Card, CardContent
+  Grid, Card, CardContent, Chip, Checkbox, FormControlLabel, Divider,
 } from '@mui/material';
-import { Delete, Edit, Add, Download, Upload, Save, Cancel, Backup, Restore } from '@mui/icons-material';
+import { Delete, Edit, Add, Download, Upload, Save, Cancel, Backup, Restore, BeachAccess } from '@mui/icons-material';
+import { DatePicker } from '@mui/x-date-pickers';
+import { format } from 'date-fns';
 import { useTaskStore } from '../store/useTaskStore';
 import type { CategoryData } from '../types';
 
 export const CategoryManager: React.FC = () => {
-  const { 
-    tasks, mainCategories, subCategories, 
+  const {
+    tasks, timeslots, mainCategories, subCategories, outputTypes, holidays,
     addMainCategory, updateMainCategory, deleteMainCategory,
     addSubCategory, updateSubCategory, deleteSubCategory,
-    importCategories, importFullData
+    addOutputType, updateOutputType, deleteOutputType,
+    addHoliday, deleteHoliday,
+    importCategories, importFullData,
   } = useTaskStore();
 
   const [newMain, setNewMain] = useState('');
@@ -22,8 +26,16 @@ export const CategoryManager: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  // Holiday state
+  const [newHolidayDate, setNewHolidayDate] = useState<Date | null>(null);
+
+  // OutputType state
+  const [newOtName, setNewOtName] = useState('');
+  const [newOtIsTangible, setNewOtIsTangible] = useState(true);
+  const [editingOt, setEditingOt] = useState<{ id: string; name: string; isTangible: boolean } | null>(null);
+
   const handleFullExport = () => {
-    const data = { tasks, mainCategories, subCategories };
+    const data = { tasks, timeslots, mainCategories, subCategories, outputTypes, holidays };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -203,7 +215,157 @@ export const CategoryManager: React.FC = () => {
           {renderCategoryList('sub', subCategories, addSubCategory, deleteSubCategory, newSub, setNewSub)}
         </Grid>
       </Grid>
+
+      {/* OutputType Management */}
+      <Typography variant="h5" sx={{ mt: 5, mb: 2 }}>工作產出類型</Typography>
+      <Card variant="outlined">
+        <CardContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            定義工作產出的類型，並標記是否為「有形產出」（有形 → 記錄連結；無形 → 記錄說明/摘要）。
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+            <TextField
+              size="small"
+              placeholder="新增產出類型名稱..."
+              value={newOtName}
+              onChange={(e) => setNewOtName(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && newOtName.trim()) {
+                  addOutputType({ name: newOtName.trim(), isTangible: newOtIsTangible });
+                  setNewOtName('');
+                }
+              }}
+              sx={{ minWidth: 200 }}
+            />
+            <FormControlLabel
+              control={<Checkbox size="small" checked={newOtIsTangible} onChange={(e) => setNewOtIsTangible(e.target.checked)} />}
+              label={<Typography variant="body2">有形產出</Typography>}
+            />
+            <Button
+              variant="contained"
+              onClick={() => {
+                if (newOtName.trim()) {
+                  addOutputType({ name: newOtName.trim(), isTangible: newOtIsTangible });
+                  setNewOtName('');
+                }
+              }}
+              disabled={!newOtName.trim()}
+            >
+              <Add />
+            </Button>
+          </Box>
+          <Divider sx={{ my: 1 }} />
+          <List dense sx={{ maxHeight: 400, overflow: 'auto' }}>
+            {outputTypes.map((ot) => (
+              <ListItem
+                key={ot.id}
+                secondaryAction={
+                  editingOt?.id === ot.id ? (
+                    <Box>
+                      <IconButton size="small" color="success" onClick={() => {
+                        if (editingOt.name.trim()) {
+                          updateOutputType(ot.id, { name: editingOt.name.trim(), isTangible: editingOt.isTangible });
+                        }
+                        setEditingOt(null);
+                      }}><Save fontSize="small" /></IconButton>
+                      <IconButton size="small" onClick={() => setEditingOt(null)}><Cancel fontSize="small" /></IconButton>
+                    </Box>
+                  ) : (
+                    <Box>
+                      <IconButton size="small" onClick={() => setEditingOt({ id: ot.id, name: ot.name, isTangible: ot.isTangible })}><Edit fontSize="small" /></IconButton>
+                      <IconButton size="small" color="error" onClick={() => deleteOutputType(ot.id)}><Delete fontSize="small" /></IconButton>
+                    </Box>
+                  )
+                }
+              >
+                {editingOt?.id === ot.id ? (
+                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', width: '100%', mr: 10 }}>
+                    <TextField
+                      size="small"
+                      value={editingOt.name}
+                      onChange={(e) => setEditingOt({ ...editingOt, name: e.target.value })}
+                      autoFocus
+                    />
+                    <FormControlLabel
+                      control={<Checkbox size="small" checked={editingOt.isTangible} onChange={(e) => setEditingOt({ ...editingOt, isTangible: e.target.checked })} />}
+                      label={<Typography variant="body2">有形</Typography>}
+                    />
+                  </Box>
+                ) : (
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {ot.name}
+                        <Chip
+                          label={ot.isTangible ? '有形' : '無形'}
+                          size="small"
+                          color={ot.isTangible ? 'primary' : 'secondary'}
+                          variant="outlined"
+                        />
+                      </Box>
+                    }
+                  />
+                )}
+              </ListItem>
+            ))}
+          </List>
+        </CardContent>
+      </Card>
       
+      {/* Holiday Management */}
+      <Typography variant="h5" sx={{ mt: 5, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <BeachAccess /> 假日 / 個人休息日
+      </Typography>
+      <Card variant="outlined">
+        <CardContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            設定假日或個人休息日。這些日期在甘特圖中會以淺藍色標示，方便辨識非上班日。
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center' }}>
+            <DatePicker
+              label="選擇日期"
+              value={newHolidayDate}
+              onChange={setNewHolidayDate}
+              slotProps={{ textField: { size: 'small' } }}
+            />
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              disabled={!newHolidayDate}
+              onClick={() => {
+                if (newHolidayDate) {
+                  addHoliday(format(newHolidayDate, 'yyyy-MM-dd'));
+                  setNewHolidayDate(null);
+                }
+              }}
+            >
+              加入
+            </Button>
+          </Box>
+          <Divider sx={{ my: 1 }} />
+          {holidays.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+              尚未設定任何假日
+            </Typography>
+          ) : (
+            <List dense sx={{ maxHeight: 300, overflow: 'auto' }}>
+              {holidays.map(date => (
+                <ListItem
+                  key={date}
+                  secondaryAction={
+                    <IconButton size="small" color="error" onClick={() => deleteHoliday(date)}>
+                      <Delete fontSize="small" />
+                    </IconButton>
+                  }
+                >
+                  <ListItemText primary={date} />
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </CardContent>
+      </Card>
+
       <Paper sx={{ p: 2, mt: 4, bgcolor: 'warning.dark' }}>
         <Typography variant="subtitle2" sx={{ color: 'warning.contrastText' }}>
           註：修改或刪除分類將會同步更新所有已使用該分類的現有任務。

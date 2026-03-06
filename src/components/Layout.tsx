@@ -16,16 +16,16 @@ export const Layout: React.FC = () => {
       <AppBar position="static">
         <Toolbar>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Task Time Tracker
+            WorkScope Planner
           </Typography>
-          <Button color="inherit" component={RouterLink} to="/" startIcon={<Dashboard />}>
-            儀表板
-          </Button>
           <Button color="inherit" component={RouterLink} to="/tasks" startIcon={<ListAlt />}>
             任務管理
           </Button>
           <Button color="inherit" component={RouterLink} to="/outputs" startIcon={<AssignmentTurnedIn />}>
             工作產出
+          </Button>
+          <Button color="inherit" component={RouterLink} to="/" startIcon={<Dashboard />}>
+            排程視圖
           </Button>
           <Button color="inherit" component={RouterLink} to="/reports" startIcon={<PieChart />}>
             統計報表

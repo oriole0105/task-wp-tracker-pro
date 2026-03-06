@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>資料遷移工具：Timeslot 獨立化</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 0 20px;
+      background: #f5f5f5;
+      color: #333;
+    }
+    h1 { color: #1565c0; }
+    h2 { color: #2e7d32; margin-top: 32px; }
+    .warning {
+      background: #fff3e0;
+      border-left: 4px solid #f57c00;
+      padding: 12px 16px;
+      margin: 16px 0;
+      border-radius: 4px;
+    }
+    .info {
+      background: #e3f2fd;
+      border-left: 4px solid #1976d2;
+      padding: 12px 16px;
+      margin: 16px 0;
+      border-radius: 4px;
+    }
+    .success {
+      background: #e8f5e9;
+      border-left: 4px solid #2e7d32;
+      padding: 12px 16px;
+      margin: 16px 0;
+      border-radius: 4px;
+    }
+    .error {
+      background: #ffebee;
+      border-left: 4px solid #c62828;
+      padding: 12px 16px;
+      margin: 16px 0;
+      border-radius: 4px;
+    }
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      margin-right: 8px;
+      margin-top: 8px;
+    }
+    button.primary {
+      background: #1565c0;
+      color: white;
+    }
+    button.primary:hover { background: #0d47a1; }
+    button.secondary {
+      background: #2e7d32;
+      color: white;
+    }
+    button.secondary:hover { background: #1b5e20; }
+    button.danger {
+      background: #c62828;
+      color: white;
+    }
+    button.danger:hover { background: #b71c1c; }
+    button:disabled {
+      background: #bdbdbd;
+      cursor: not-allowed;
+    }
+    .step {
+      background: white;
+      border-radius: 8px;
+      padding: 24px;
+      margin: 16px 0;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .step-number {
+      display: inline-block;
+      width: 28px;
+      height: 28px;
+      background: #1565c0;
+      color: white;
+      border-radius: 50%;
+      text-align: center;
+      line-height: 28px;
+      font-weight: bold;
+      margin-right: 8px;
+    }
+    pre {
+      background: #263238;
+      color: #aed581;
+      padding: 16px;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .stats-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+    }
+    .stats-table th, .stats-table td {
+      border: 1px solid #ddd;
+      padding: 8px 12px;
+      text-align: left;
+    }
+    .stats-table th { background: #e3f2fd; }
+    .stats-table tr:nth-child(even) { background: #f9f9f9; }
+    #log {
+      background: #263238;
+      color: #80cbc4;
+      padding: 12px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 12px;
+      min-height: 60px;
+      max-height: 200px;
+      overflow-y: auto;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔄 資料遷移工具：Timeslot 獨立化</h1>
+
+  <div class="warning">
+    <strong>⚠️ 重要提醒</strong><br>
+    執行遷移前，請確保 task-time-tracker 應用程式已<strong>關閉</strong>（不在任何分頁中開啟），
+    以避免 localStorage 資料衝突。<br>
+    此工具會讀取 <code>task-storage</code> localStorage key 並轉換資料格式。
+  </div>
+
+  <div class="info">
+    <strong>📋 遷移說明</strong><br>
+    舊格式：每個 Task 包含 <code>timeLogs[]</code>、<code>totalTimeSpent</code>、<code>subCategory</code><br>
+    新格式：獨立的 <code>timeslots[]</code> 頂層陣列，subCategory 移至每個 timeslot
+  </div>
+
+  <!-- Step 1: 備份 -->
+  <div class="step">
+    <h2><span class="step-number">1</span>備份現有資料</h2>
+    <p>先讀取並備份現有 localStorage 資料，避免遷移失敗後資料遺失。</p>
+    <button class="primary" onclick="loadAndPreview()">讀取 localStorage 資料</button>
+    <button class="secondary" id="downloadBtn" onclick="downloadBackup()" disabled>下載備份 JSON</button>
+    <div id="step1Result"></div>
+  </div>
+
+  <!-- Step 2: 預覽轉換 -->
+  <div class="step">
+    <h2><span class="step-number">2</span>預覽轉換結果</h2>
+    <p>確認轉換邏輯正確後再執行。</p>
+    <button class="primary" id="previewBtn" onclick="previewMigration()" disabled>預覽轉換</button>
+    <div id="step2Result"></div>
+  </div>
+
+  <!-- Step 3: 執行遷移 -->
+  <div class="step">
+    <h2><span class="step-number">3</span>執行遷移</h2>
+    <div class="warning">
+      <strong>此操作將覆蓋 localStorage 中的現有資料！</strong><br>
+      請確保已完成步驟 1 的備份下載。
+    </div>
+    <button class="danger" id="migrateBtn" onclick="executeMigration()" disabled>執行遷移</button>
+    <div id="step3Result"></div>
+    <div id="log"></div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'task-storage';
+    let originalData = null;
+    let migratedData = null;
+
+    function log(msg, color = '#80cbc4') {
+      const el = document.getElementById('log');
+      const time = new Date().toLocaleTimeString();
+      el.innerHTML += `<div style="color:${color}">[${time}] ${msg}</div>`;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function loadAndPreview() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        document.getElementById('step1Result').innerHTML =
+          '<div class="error">❌ 找不到 task-storage 資料。請確認此頁面與 task-time-tracker 使用同一個網域/來源（同一個瀏覽器的相同 localhost:5173）。</div>';
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(raw);
+        originalData = parsed;
+
+        const state = parsed.state || parsed;
+        const tasks = state.tasks || [];
+        const existingTimeslots = state.timeslots || [];
+        const totalTimeLogs = tasks.reduce((acc, t) => acc + (t.timeLogs || []).length, 0);
+
+        document.getElementById('step1Result').innerHTML = `
+          <div class="success">
+            ✅ 資料讀取成功
+            <table class="stats-table" style="margin-top:12px">
+              <tr><th>項目</th><th>數量</th></tr>
+              <tr><td>任務數</td><td>${tasks.length}</td></tr>
+              <tr><td>舊格式 timeLogs 總數</td><td>${totalTimeLogs}</td></tr>
+              <tr><td>現有頂層 timeslots 數</td><td>${existingTimeslots.length}</td></tr>
+              <tr><td>mainCategories</td><td>${(state.mainCategories || []).join(', ') || '無'}</td></tr>
+              <tr><td>subCategories</td><td>${(state.subCategories || []).join(', ') || '無'}</td></tr>
+            </table>
+            ${totalTimeLogs > 0
+              ? '<p>⚠️ 偵測到舊格式 timeLogs，需要遷移。</p>'
+              : '<p>ℹ️ 未偵測到舊格式 timeLogs（可能已遷移過或從未有 timeLogs）。</p>'}
+          </div>
+        `;
+
+        document.getElementById('downloadBtn').disabled = false;
+        document.getElementById('previewBtn').disabled = false;
+        log('資料讀取完成：' + tasks.length + ' 個任務，' + totalTimeLogs + ' 個 timeLogs');
+      } catch (e) {
+        document.getElementById('step1Result').innerHTML =
+          '<div class="error">❌ JSON 解析失敗：' + e.message + '</div>';
+      }
+    }
+
+    function downloadBackup() {
+      if (!originalData) return;
+      const blob = new Blob([JSON.stringify(originalData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'task-storage-backup-' + new Date().toISOString().slice(0, 19).replace(/:/g, '-') + '.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      log('備份已下載', '#a5d6a7');
+    }
+
+    function migrate(rawParsed) {
+      const migrateTime = Date.now();
+      // Support both zustand persist format (has .state wrapper) and plain object
+      const isZustandFormat = !!rawParsed.state;
+      const state = isZustandFormat ? rawParsed.state : rawParsed;
+
+      const timeslots = [...(state.timeslots || [])];
+      const usedIds = new Set(timeslots.map(ts => ts.id));
+
+      let migratedCount = 0;
+      let runningFixed = 0;
+
+      const newTasks = (state.tasks || []).map(task => {
+        const { timeLogs = [], totalTimeSpent, subCategory, ...rest } = task;
+        timeLogs.forEach(log => {
+          // Avoid duplicating if already migrated
+          if (usedIds.has(log.id)) return;
+          usedIds.add(log.id);
+
+          let endTime = log.endTime;
+          if (!endTime) {
+            // 計時中的 timelog：補上遷移時間作為結束時間
+            endTime = migrateTime;
+            runningFixed++;
+          }
+
+          timeslots.push({
+            id: log.id,
+            startTime: log.startTime,
+            endTime: endTime,
+            taskId: task.id,
+            subCategory: subCategory || '',
+            note: '',
+          });
+          migratedCount++;
+        });
+
+        return rest; // 移除 timeLogs、totalTimeSpent、subCategory
+      });
+
+      const newState = {
+        ...state,
+        tasks: newTasks,
+        timeslots: timeslots,
+      };
+
+      return {
+        result: isZustandFormat ? { ...rawParsed, state: newState } : newState,
+        stats: { migratedCount, runningFixed, totalTimeslots: timeslots.length }
+      };
+    }
+
+    function previewMigration() {
+      if (!originalData) return;
+
+      try {
+        const { result, stats } = migrate(JSON.parse(JSON.stringify(originalData)));
+        migratedData = result;
+
+        const state = result.state || result;
+        const newTasks = state.tasks || [];
+        const newTimeslots = state.timeslots || [];
+
+        // Sample preview of first 3 timeslots
+        const sample = newTimeslots.slice(0, 3).map(ts => ({
+          id: ts.id,
+          taskId: ts.taskId || '（無）',
+          subCategory: ts.subCategory || '（空）',
+          startTime: new Date(ts.startTime).toLocaleString(),
+          endTime: ts.endTime ? new Date(ts.endTime).toLocaleString() : '（無）',
+        }));
+
+        document.getElementById('step2Result').innerHTML = `
+          <div class="success">
+            ✅ 預覽轉換成功
+            <table class="stats-table" style="margin-top:12px">
+              <tr><th>項目</th><th>舊格式</th><th>新格式</th></tr>
+              <tr><td>任務數</td><td>${(originalData.state || originalData).tasks?.length ?? 0}</td><td>${newTasks.length}</td></tr>
+              <tr><td>頂層 timeslots 數</td><td>${(originalData.state || originalData).timeslots?.length ?? 0}</td><td>${newTimeslots.length}</td></tr>
+              <tr><td>本次從 timeLogs 遷移</td><td>-</td><td>${stats.migratedCount}</td></tr>
+              <tr><td>計時中紀錄（補 endTime）</td><td>-</td><td>${stats.runningFixed}</td></tr>
+            </table>
+          </div>
+          <h3 style="margin-top:16px">Timeslots 樣本（前 3 筆）</h3>
+          <pre>${JSON.stringify(sample, null, 2)}</pre>
+          <h3>任務結構樣本（前 2 筆）</h3>
+          <pre>${JSON.stringify(newTasks.slice(0, 2).map(t => ({ id: t.id, title: t.title, mainCategory: t.mainCategory })), null, 2)}</pre>
+        `;
+
+        document.getElementById('migrateBtn').disabled = false;
+        log('預覽完成：將新增 ' + stats.migratedCount + ' 筆 timeslots', '#a5d6a7');
+      } catch (e) {
+        document.getElementById('step2Result').innerHTML =
+          '<div class="error">❌ 預覽失敗：' + e.message + '</div>';
+        log('預覽失敗: ' + e.message, '#ef9a9a');
+      }
+    }
+
+    function executeMigration() {
+      if (!migratedData) {
+        alert('請先執行「預覽轉換」');
+        return;
+      }
+
+      if (!confirm('確定要執行遷移嗎？這將覆蓋 localStorage 中的現有資料！\n\n請確保已下載備份。')) {
+        return;
+      }
+
+      try {
+        log('開始寫入 localStorage...', '#ffcc02');
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(migratedData));
+        log('✅ 遷移完成！資料已寫入 localStorage', '#a5d6a7');
+
+        // Verify
+        const verify = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        const verifyState = verify.state || verify;
+        log('驗證：tasks=' + (verifyState.tasks?.length ?? 0) + ', timeslots=' + (verifyState.timeslots?.length ?? 0), '#a5d6a7');
+
+        document.getElementById('step3Result').innerHTML = `
+          <div class="success">
+            ✅ 遷移成功！<br>
+            <strong>請在新分頁中重新開啟 task-time-tracker 應用程式（localhost:5173）驗證資料正確性。</strong><br>
+            重新開啟後若看到 Dashboard 時間軸顯示正常，即表示遷移成功。
+          </div>
+        `;
+        document.getElementById('migrateBtn').disabled = true;
+      } catch (e) {
+        document.getElementById('step3Result').innerHTML =
+          '<div class="error">❌ 遷移失敗：' + e.message + '</div>';
+        log('遷移失敗: ' + e.message, '#ef9a9a');
+      }
+    }
+  </script>
+</body>
+</html>

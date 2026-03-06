@@ -5,26 +5,24 @@ import {
   ToggleButtonGroup, ToggleButton, FormControl, InputLabel, Select, MenuItem, IconButton,
   Tooltip, FormControlLabel, Switch
 } from '@mui/material';
-import { Pause, Palette, Height, ChevronLeft, ChevronRight } from '@mui/icons-material';
+import { Palette, Height, ChevronLeft, ChevronRight } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers';
 import { useTaskStore } from '../store/useTaskStore';
 import { format, startOfDay, endOfDay, startOfWeek, addDays, isSameDay, addWeeks, subWeeks, subDays } from 'date-fns';
 import { getCategoryColor } from '../utils/colors';
 import { TaskForm } from './TaskForm';
-import type { TimeLog, Task } from '../types';
+import type { Timeslot, Task } from '../types';
 
-interface TimeSlot extends TimeLog {
-  taskId: string;
+interface TimeSlot extends Timeslot {
   taskTitle: string;
   aliasTitle: string;
-  taskDescription: string; // Added for tooltip
+  taskDescription: string;
   mainCategory: string;
-  subCategory: string;
   date: Date;
 }
 
-const START_HOUR = 7;
-const END_HOUR = 22;
+const START_HOUR = 0;
+const END_HOUR = 23;
 const HEADER_HEIGHT = 40;
 
 type ViewType = 'day' | 'week5' | 'week7';
@@ -32,16 +30,14 @@ type ColorMode = 'main' | 'sub';
 type ZoomLevel = 60 | 120;
 
 export const TimeTracker: React.FC = () => {
-  const { tasks, stopTimer, manualAddTimeLog, updateTimeLog, deleteTimeLog } = useTaskStore();
+  const { tasks, timeslots, subCategories, addTimeslot, updateTimeslot, deleteTimeslot } = useTaskStore();
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [view, setView] = useState<ViewType>('week5');
   const [colorMode, setColorMode] = useState<ColorMode>('sub');
   const [hourHeight, setHourHeight] = useState<ZoomLevel>(60);
-  const [showTooltip, setShowTooltip] = useState(true); // Default ON
-  
-  const activeTask = tasks.find(t => t.status === 'IN_PROGRESS');
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showTooltip, setShowTooltip] = useState(true);
 
+  const scrollRef = useRef<HTMLDivElement>(null);
   const pixelsPerMinute = hourHeight / 60;
 
   const handlePrev = () => {
@@ -61,53 +57,51 @@ export const TimeTracker: React.FC = () => {
     if (view === 'day') return [startOfDay(selectedDate)];
     const sunday = startOfWeek(selectedDate, { weekStartsOn: 0 });
     if (view === 'week5') {
-        return [1, 2, 3, 4, 5].map(i => addDays(sunday, i));
+      return [1, 2, 3, 4, 5].map(i => addDays(sunday, i));
     }
     return Array.from({ length: 7 }, (_, i) => addDays(sunday, i));
   }, [selectedDate, view]);
 
   const slotsByDate = useMemo(() => {
     const map = new Map<string, TimeSlot[]>();
-    
+
     displayDates.forEach(date => {
       const dayStart = startOfDay(date).getTime();
       const dayEnd = endOfDay(date).getTime();
       const slots: TimeSlot[] = [];
 
-      tasks.forEach(task => {
-        (task.timeLogs || []).forEach(log => {
-          const effectiveStart = Math.max(log.startTime, dayStart);
-          const effectiveEnd = Math.min(log.endTime || Date.now(), dayEnd);
+      timeslots.forEach(ts => {
+        const effectiveStart = Math.max(ts.startTime, dayStart);
+        const effectiveEnd = Math.min(ts.endTime || Date.now(), dayEnd);
 
-          if (effectiveStart < dayEnd && effectiveEnd > dayStart) {
-             slots.push({
-               ...log,
-               startTime: effectiveStart,
-               endTime: effectiveEnd,
-               date: date,
-               taskId: task.id,
-               taskTitle: task.title,
-               aliasTitle: task.aliasTitle,
-               taskDescription: task.description || '',
-               mainCategory: task.mainCategory,
-               subCategory: task.subCategory,
-             });
-          }
-        });
+        if (effectiveStart < dayEnd && effectiveEnd > dayStart) {
+          const task = ts.taskId ? tasks.find(t => t.id === ts.taskId) : undefined;
+          slots.push({
+            ...ts,
+            startTime: effectiveStart,
+            endTime: effectiveEnd,
+            date: date,
+            taskTitle: task?.title || '（未連結任務）',
+            aliasTitle: task?.aliasTitle || '',
+            taskDescription: task?.description || '',
+            mainCategory: task?.mainCategory || '未分類',
+          });
+        }
       });
+
       map.set(date.toDateString(), slots.sort((a, b) => a.startTime - b.startTime));
     });
-    
+
     return map;
-  }, [tasks, displayDates]);
-  
+  }, [timeslots, tasks, displayDates]);
+
   useEffect(() => {
-      if (scrollRef.current) {
-          const allSlots = Array.from(slotsByDate.values()).flat();
-          const firstHour = allSlots.length > 0 ? new Date(Math.min(...allSlots.map(s => s.startTime))).getHours() : 8;
-          const targetHour = Math.max(firstHour - START_HOUR, 0);
-          scrollRef.current.scrollTop = targetHour * hourHeight;
-      }
+    if (scrollRef.current) {
+      const allSlots = Array.from(slotsByDate.values()).flat();
+      const firstHour = allSlots.length > 0 ? new Date(Math.min(...allSlots.map(s => s.startTime))).getHours() : 7;
+      const targetHour = Math.max(firstHour - 1, 0);
+      scrollRef.current.scrollTop = targetHour * hourHeight;
+    }
   }, [selectedDate, view, hourHeight, slotsByDate]);
 
   // Edit Log State
@@ -115,6 +109,9 @@ export const TimeTracker: React.FC = () => {
   const [editDate, setEditDate] = useState<Date | null>(null);
   const [editStart, setEditStart] = useState('');
   const [editEnd, setEditEnd] = useState('');
+  const [editSubCategory, setEditSubCategory] = useState('');
+  const [editTaskId, setEditTaskId] = useState('');
+  const [editNote, setEditNote] = useState('');
 
   // Task Form State (double-click)
   const [taskFormOpen, setTaskFormOpen] = useState(false);
@@ -129,11 +126,16 @@ export const TimeTracker: React.FC = () => {
   const [quickAddStart, setQuickAddStart] = useState('');
   const [quickAddEnd, setQuickAddEnd] = useState('');
   const [quickAddTaskId, setQuickAddTaskId] = useState('');
+  const [quickAddSubCategory, setQuickAddSubCategory] = useState('');
+  const [quickAddNote, setQuickAddNote] = useState('');
+
+  // 從 Quick Add 跳去建立新任務時，記錄原先任務 ID 集合以便回來後自動選新任務
+  const pendingQuickAdd = useRef(false);
+  const prevTaskIdsRef = useRef<Set<string>>(new Set());
 
   const handleHourCellClick = (date: Date, hour: number, e: React.MouseEvent) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const y = e.clientY - rect.top;
-    // 依點擊位置計算分鐘，對齊至 15 分鐘
     const rawMinutes = Math.round((y / hourHeight) * 60 / 15) * 15;
     const minuteOffset = Math.min(rawMinutes, 59);
     const totalMinutes = hour * 60 + minuteOffset;
@@ -142,18 +144,20 @@ export const TimeTracker: React.FC = () => {
 
     const startTime = new Date(date);
     startTime.setHours(snappedH, snappedM, 0, 0);
-    const endTime = new Date(startTime.getTime() + 60 * 60 * 1000); // 預設 +1 小時
+    const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);
 
     const fmt = (h: number, m: number) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
     setQuickAddDate(new Date(date));
     setQuickAddStart(fmt(snappedH, snappedM));
     setQuickAddEnd(fmt(endTime.getHours(), endTime.getMinutes()));
     setQuickAddTaskId('');
+    setQuickAddSubCategory('');
+    setQuickAddNote('');
     setQuickAddOpen(true);
   };
 
   const handleQuickAddSave = () => {
-    if (!quickAddTaskId || !quickAddStart || !quickAddEnd) return;
+    if (!quickAddStart || !quickAddEnd) return;
     const [sh, sm] = quickAddStart.split(':').map(Number);
     const [eh, em] = quickAddEnd.split(':').map(Number);
     const start = new Date(quickAddDate);
@@ -161,7 +165,13 @@ export const TimeTracker: React.FC = () => {
     const end = new Date(quickAddDate);
     end.setHours(eh, em, 0, 0);
     if (end <= start) return;
-    manualAddTimeLog(quickAddTaskId, start.getTime(), end.getTime());
+    addTimeslot({
+      taskId: quickAddTaskId || undefined,
+      subCategory: quickAddSubCategory,
+      startTime: start.getTime(),
+      endTime: end.getTime(),
+      note: quickAddNote,
+    });
     setQuickAddOpen(false);
   };
 
@@ -169,12 +179,15 @@ export const TimeTracker: React.FC = () => {
     setEditingLog(slot);
     setEditDate(slot.date);
     setEditStart(format(slot.startTime, 'HH:mm'));
-    const isRunning = !tasks.find(t => t.id === slot.taskId)?.timeLogs.find(l => l.id === slot.id)?.endTime;
+    const originalTs = timeslots.find(ts => ts.id === slot.id);
+    const isRunning = !originalTs?.endTime;
     setEditEnd(isRunning ? '' : format(slot.endTime!, 'HH:mm'));
+    setEditSubCategory(slot.subCategory || '');
+    setEditTaskId(slot.taskId || '');
+    setEditNote(slot.note || '');
   };
 
   const handleSlotClick = (slot: TimeSlot) => {
-    // 若已有待執行的單擊（雙擊第一次點），取消即可，讓 onDoubleClick 接手
     if (clickTimerRef.current) {
       clearTimeout(clickTimerRef.current);
       clickTimerRef.current = null;
@@ -187,15 +200,16 @@ export const TimeTracker: React.FC = () => {
   };
 
   const handleSlotDoubleClick = (slot: TimeSlot) => {
-    // 取消尚未執行的單擊計時器
     if (clickTimerRef.current) {
       clearTimeout(clickTimerRef.current);
       clickTimerRef.current = null;
     }
-    const task = tasks.find(t => t.id === slot.taskId);
-    if (task) {
-      setEditingTask(task);
-      setTaskFormOpen(true);
+    if (slot.taskId) {
+      const task = tasks.find(t => t.id === slot.taskId);
+      if (task) {
+        setEditingTask(task);
+        setTaskFormOpen(true);
+      }
     }
   };
 
@@ -205,268 +219,323 @@ export const TimeTracker: React.FC = () => {
       const newStart = new Date(editDate);
       newStart.setHours(sh, sm, 0, 0);
 
-      let newEnd = editingLog.endTime || 0;
+      let newEnd: number | undefined = editingLog.endTime;
       if (editEnd) {
-         const [eh, em] = editEnd.split(':').map(Number);
-         const d = new Date(editDate);
-         d.setHours(eh, em, 0, 0);
-         newEnd = d.getTime();
+        const [eh, em] = editEnd.split(':').map(Number);
+        const d = new Date(editDate);
+        d.setHours(eh, em, 0, 0);
+        newEnd = d.getTime();
       } else {
-        const originalLog = tasks.find(t => t.id === editingLog.taskId)?.timeLogs.find(l => l.id === editingLog.id);
-        if (originalLog?.endTime) {
-            // Adjust the original end time to the new date
-            const d = new Date(editDate);
-            const oldEnd = new Date(originalLog.endTime);
-            d.setHours(oldEnd.getHours(), oldEnd.getMinutes(), 0, 0);
-            newEnd = d.getTime();
+        const originalTs = timeslots.find(ts => ts.id === editingLog.id);
+        if (originalTs?.endTime) {
+          const d = new Date(editDate);
+          const oldEnd = new Date(originalTs.endTime);
+          d.setHours(oldEnd.getHours(), oldEnd.getMinutes(), 0, 0);
+          newEnd = d.getTime();
         }
       }
-      
-      updateTimeLog(editingLog.taskId, editingLog.id, newStart.getTime(), newEnd);
+
+      updateTimeslot(editingLog.id, {
+        startTime: newStart.getTime(),
+        endTime: newEnd,
+        subCategory: editSubCategory,
+        taskId: editTaskId || undefined,
+        note: editNote,
+      });
       setEditingLog(null);
     }
   };
-  
+
   const handleDeleteLog = () => {
-      if(editingLog) {
-          deleteTimeLog(editingLog.taskId, editingLog.id);
-          setEditingLog(null);
-      }
-  }
+    if (editingLog) {
+      deleteTimeslot(editingLog.id);
+      setEditingLog(null);
+    }
+  };
 
   const hours = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => i + START_HOUR);
+
+  // 非封存任務清單（供 Select 使用）
+  const activeTasks = useMemo(() => tasks.filter(t => !t.archived), [tasks]);
 
   return (
     <Box sx={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexShrink: 0, gap: 2, flexWrap: 'wrap' }}>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <IconButton size="small" onClick={handlePrev}><ChevronLeft /></IconButton>
-                <DatePicker 
-                    label="日期"
-                    value={selectedDate} 
-                    onChange={(d) => setSelectedDate(d)}
-                    slotProps={{ textField: { size: 'small', sx: { width: 150 } } }}
-                />
-                <IconButton size="small" onClick={handleNext}><ChevronRight /></IconButton>
-            </Box>
-
-            <ToggleButtonGroup
-                value={view}
-                exclusive
-                onChange={(_, v) => v && setView(v)}
-                size="small"
-                color="primary"
-            >
-                <ToggleButton value="day">日</ToggleButton>
-                <ToggleButton value="week5">週 (5天)</ToggleButton>
-                <ToggleButton value="week7">週 (7天)</ToggleButton>
-            </ToggleButtonGroup>
-
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Height fontSize="small" color="action" />
-                <ToggleButtonGroup
-                    value={hourHeight}
-                    exclusive
-                    onChange={(_, v) => v && setHourHeight(v)}
-                    size="small"
-                    color="secondary"
-                >
-                    <ToggleButton value={60}>精簡</ToggleButton>
-                    <ToggleButton value={120}>詳細</ToggleButton>
-                </ToggleButtonGroup>
-            </Box>
-
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Palette fontSize="small" color="action" />
-                <FormControl size="small" variant="outlined" sx={{ minWidth: 130 }}>
-                    <InputLabel>顏色</InputLabel>
-                    <Select
-                        value={colorMode}
-                        label="顏色"
-                        onChange={(e) => setColorMode(e.target.value as ColorMode)}
-                    >
-                        <MenuItem value="main">任務分類</MenuItem>
-                        <MenuItem value="sub">時間分類</MenuItem>
-                    </Select>
-                </FormControl>
-            </Box>
-
-            <FormControlLabel
-                control={<Switch size="small" checked={showTooltip} onChange={(e) => setShowTooltip(e.target.checked)} />}
-                label={<Typography variant="caption">顯示說明</Typography>}
-                sx={{ ml: 1 }}
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <IconButton size="small" onClick={handlePrev}><ChevronLeft /></IconButton>
+            <DatePicker
+              label="日期"
+              value={selectedDate}
+              onChange={(d) => setSelectedDate(d)}
+              slotProps={{ textField: { size: 'small', sx: { width: 150 } } }}
             />
-        </Box>
+            <IconButton size="small" onClick={handleNext}><ChevronRight /></IconButton>
+          </Box>
 
-        {activeTask && (
-            <Paper elevation={1} sx={{ px: 2, py: 1, bgcolor: 'action.selected', display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Typography variant="body2"><b>執行中:</b> {activeTask.title}</Typography>
-                <Button size="small" variant="contained" color="warning" startIcon={<Pause />} onClick={() => stopTimer(activeTask.id)}>停止</Button>
-            </Paper>
-        )}
+          <ToggleButtonGroup
+            value={view}
+            exclusive
+            onChange={(_, v) => v && setView(v)}
+            size="small"
+            color="primary"
+          >
+            <ToggleButton value="day">日</ToggleButton>
+            <ToggleButton value="week5">週 (5天)</ToggleButton>
+            <ToggleButton value="week7">週 (7天)</ToggleButton>
+          </ToggleButtonGroup>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Height fontSize="small" color="action" />
+            <ToggleButtonGroup
+              value={hourHeight}
+              exclusive
+              onChange={(_, v) => v && setHourHeight(v)}
+              size="small"
+              color="secondary"
+            >
+              <ToggleButton value={60}>精簡</ToggleButton>
+              <ToggleButton value={120}>詳細</ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Palette fontSize="small" color="action" />
+            <FormControl size="small" variant="outlined" sx={{ minWidth: 130 }}>
+              <InputLabel>顏色</InputLabel>
+              <Select
+                value={colorMode}
+                label="顏色"
+                onChange={(e) => setColorMode(e.target.value as ColorMode)}
+              >
+                <MenuItem value="main">任務分類</MenuItem>
+                <MenuItem value="sub">時間分類</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+
+          <FormControlLabel
+            control={<Switch size="small" checked={showTooltip} onChange={(e) => setShowTooltip(e.target.checked)} />}
+            label={<Typography variant="caption">顯示說明</Typography>}
+            sx={{ ml: 1 }}
+          />
+        </Box>
       </Box>
 
       <Paper sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <Box 
-            ref={scrollRef}
-            sx={{ flexGrow: 1, overflowY: 'auto', position: 'relative', display: 'flex' }}
+
+        {/* ── 固定日期標頭列 ── */}
+        <Box sx={{ display: 'flex', flexShrink: 0, borderBottom: 2, borderColor: 'divider', bgcolor: 'background.paper', zIndex: 40 }}>
+          <Box sx={{ width: 65, flexShrink: 0, borderRight: 1, borderColor: 'divider', height: HEADER_HEIGHT }} />
+          <Box sx={{ display: 'flex', flexGrow: 1 }}>
+            {displayDates.map((date, idx) => {
+              const isToday = isSameDay(date, new Date());
+              return (
+                <Box key={idx} sx={{
+                  flexGrow: 1, flexBasis: 0,
+                  minWidth: view === 'day' ? '100%' : (view === 'week5' ? 150 : 120),
+                  borderRight: 1, borderColor: 'divider',
+                  height: HEADER_HEIGHT,
+                  bgcolor: isToday ? 'rgba(25, 118, 210, 0.18)' : 'action.hover',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: isToday ? 'bold' : 'normal', fontSize: '0.75rem' }}>
+                    {format(date, view === 'day' ? 'EEEE, MMMM do' : 'EEE MM/dd')}
+                  </Typography>
+                </Box>
+              );
+            })}
+          </Box>
+        </Box>
+
+        {/* ── 可捲動的時間格區域 ── */}
+        <Box
+          ref={scrollRef}
+          sx={{ flexGrow: 1, overflowY: 'auto', position: 'relative', display: 'flex' }}
         >
-            <Box sx={{ width: 65, flexShrink: 0, borderRight: 1, borderColor: 'divider', bgcolor: 'background.paper', position: 'sticky', left: 0, zIndex: 30 }}>
-                <Box sx={{ height: HEADER_HEIGHT, borderBottom: 2, borderColor: 'divider' }} />
-                {hours.map(hour => (
-                    <Box key={hour} sx={{ height: hourHeight, borderBottom: 1, borderColor: 'divider', position: 'relative' }}>
-                        <Typography variant="caption" sx={{ position: 'absolute', top: -10, right: 8, color: 'text.secondary', fontWeight: 'bold', fontSize: '0.75rem' }}>
-                            {hour < 10 ? `0${hour}` : hour}:00
-                        </Typography>
-                        <Box sx={{ position: 'absolute', top: hourHeight/2, right: 0, width: 5, borderTop: 1, borderColor: 'divider' }} />
+          {/* 時間軸（左側） */}
+          <Box sx={{ width: 65, flexShrink: 0, borderRight: 1, borderColor: 'divider', bgcolor: 'background.paper', position: 'sticky', left: 0, zIndex: 30 }}>
+            {hours.map(hour => (
+              <Box key={hour} sx={{ height: hourHeight, borderBottom: 1, borderColor: 'divider', position: 'relative' }}>
+                <Typography variant="caption" sx={{ position: 'absolute', top: -10, right: 8, color: 'text.secondary', fontWeight: 'bold', fontSize: '0.75rem' }}>
+                  {hour < 10 ? `0${hour}` : hour}:00
+                </Typography>
+                <Box sx={{ position: 'absolute', top: hourHeight / 2, right: 0, width: 5, borderTop: 1, borderColor: 'divider' }} />
+              </Box>
+            ))}
+          </Box>
+
+          <Box sx={{ display: 'flex', flexGrow: 1 }}>
+            {displayDates.map((date, idx) => {
+              const slots = slotsByDate.get(date.toDateString()) || [];
+              const isToday = isSameDay(date, new Date());
+
+              return (
+                <Box key={idx} sx={{
+                  flexGrow: 1, flexBasis: 0,
+                  minWidth: view === 'day' ? '100%' : (view === 'week5' ? 150 : 120),
+                  borderRight: 1, borderColor: 'divider',
+                  position: 'relative',
+                  bgcolor: isToday ? 'rgba(25, 118, 210, 0.04)' : 'transparent'
+                }}>
+                  {hours.map(hour => (
+                    <Box
+                      key={hour}
+                      onClick={(e) => handleHourCellClick(date, hour, e)}
+                      sx={{
+                        height: hourHeight,
+                        borderBottom: 1,
+                        borderColor: 'divider',
+                        position: 'relative',
+                        cursor: 'cell',
+                        '&:hover': { bgcolor: 'action.hover' },
+                      }}
+                    >
+                      <Box sx={{ position: 'absolute', top: hourHeight / 2, left: 0, right: 0, borderTop: '1px dashed', borderColor: 'action.disabledBackground', pointerEvents: 'none' }} />
                     </Box>
-                ))}
-            </Box>
+                  ))}
 
-            <Box sx={{ display: 'flex', flexGrow: 1 }}>
-                {displayDates.map((date, idx) => {
-                    const slots = slotsByDate.get(date.toDateString()) || [];
-                    const isToday = isSameDay(date, new Date());
+                  {slots.map((slot) => {
+                    const start = new Date(slot.startTime);
+                    const end = new Date(slot.endTime!);
 
-                    return (
-                        <Box key={idx} sx={{
-                            flexGrow: 1, flexBasis: 0,
-                            minWidth: view === 'day' ? '100%' : (view === 'week5' ? 150 : 120),
-                            borderRight: 1, borderColor: 'divider',
-                            position: 'relative',
-                            bgcolor: isToday ? 'rgba(25, 118, 210, 0.04)' : 'transparent'
-                        }}>
-                            <Box sx={{
-                                height: HEADER_HEIGHT, borderBottom: 2, borderColor: 'divider',
-                                bgcolor: isToday ? 'rgba(25, 118, 210, 0.18)' : 'action.hover',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                position: 'sticky', top: 0, zIndex: 25
-                            }}>
-                                <Typography variant="subtitle2" sx={{ fontWeight: isToday ? 'bold' : 'normal', fontSize: '0.75rem' }}>
-                                    {format(date, view === 'day' ? 'EEEE, MMMM do' : 'EEE MM/dd')}
-                                </Typography>
-                            </Box>
+                    const startTotalMinutes = start.getHours() * 60 + start.getMinutes();
+                    const snappedStartMinutes = Math.floor(startTotalMinutes / 5) * 5;
 
-                            {hours.map(hour => (
-                                <Box
-                                    key={hour}
-                                    onClick={(e) => handleHourCellClick(date, hour, e)}
-                                    sx={{
-                                        height: hourHeight,
-                                        borderBottom: 1,
-                                        borderColor: 'divider',
-                                        position: 'relative',
-                                        cursor: 'cell',
-                                        '&:hover': { bgcolor: 'action.hover' },
-                                    }}
-                                >
-                                    <Box sx={{ position: 'absolute', top: hourHeight/2, left: 0, right: 0, borderTop: '1px dashed', borderColor: 'action.disabledBackground', pointerEvents: 'none' }} />
-                                </Box>
-                            ))}
+                    const endTotalMinutes = end.getHours() * 60 + end.getMinutes();
+                    const snappedEndMinutes = Math.ceil(endTotalMinutes / 5) * 5;
 
-                            {slots.map((slot) => {
-                                const start = new Date(slot.startTime);
-                                const end = new Date(slot.endTime!);
-                                
-                                const startTotalMinutes = start.getHours() * 60 + start.getMinutes();
-                                const snappedStartMinutes = Math.floor(startTotalMinutes / 5) * 5;
-                                
-                                const endTotalMinutes = end.getHours() * 60 + end.getMinutes();
-                                const snappedEndMinutes = Math.ceil(endTotalMinutes / 5) * 5;
-                                
-                                const durationMinutes = Math.max(snappedEndMinutes - snappedStartMinutes, 10);
-                                const topOffset = (snappedStartMinutes - (START_HOUR * 60)) * pixelsPerMinute;
+                    const durationMinutes = Math.max(snappedEndMinutes - snappedStartMinutes, 10);
+                    const topOffset = (snappedStartMinutes - (START_HOUR * 60)) * pixelsPerMinute;
 
-                                if (snappedEndMinutes < START_HOUR * 60 || snappedStartMinutes > END_HOUR * 60) return null;
+                    if (snappedEndMinutes < START_HOUR * 60 || snappedStartMinutes > END_HOUR * 60) return null;
 
-                                const targetCategory = colorMode === 'main' ? slot.mainCategory : slot.subCategory;
-                                const blockColor = getCategoryColor(targetCategory);
+                    const targetCategory = colorMode === 'main' ? slot.mainCategory : slot.subCategory;
+                    const blockColor = getCategoryColor(targetCategory);
 
-                                const slotContent = (
-                                    <Box
-                                        onClick={(e) => { e.stopPropagation(); handleSlotClick(slot); }}
-                                        onDoubleClick={(e) => { e.stopPropagation(); handleSlotDoubleClick(slot); }}
-                                        sx={{
-                                            position: 'absolute',
-                                            top: HEADER_HEIGHT + topOffset,
-                                            height: durationMinutes * pixelsPerMinute,
-                                            left: 4,
-                                            right: 4,
-                                            bgcolor: blockColor,
-                                            color: 'white',
-                                            borderRadius: '4px',
-                                            p: '4px 8px',
-                                            fontSize: '0.75rem',
-                                            cursor: 'pointer',
-                                            overflow: 'hidden',
-                                            zIndex: 1,
-                                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                                            borderLeft: '4px solid rgba(0,0,0,0.3)',
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            transition: 'transform 0.1s',
-                                            '&:hover': { zIndex: 10, filter: 'brightness(1.1)', transform: 'scale(1.01)' }
-                                        }}
-                                    >
-                                        <Typography variant="caption" sx={{ fontWeight: 'bold', lineHeight: 1.2 }} noWrap>
-                                            {slot.aliasTitle || slot.taskTitle}
-                                        </Typography>
-                                        {(hourHeight === 120 || durationMinutes >= 30) && (
-                                            <Typography variant="caption" sx={{ fontSize: '0.65rem', opacity: 0.9 }} noWrap>
-                                                {format(start, 'HH:mm')}-{format(end, 'HH:mm')}
-                                            </Typography>
-                                        )}
-                                    </Box>
-                                );
-
-                                return showTooltip ? (
-                                    <Tooltip 
-                                        key={slot.id} 
-                                        title={slot.taskDescription || '無任務說明'} 
-                                        arrow 
-                                        placement="right"
-                                        enterDelay={500}
-                                    >
-                                        {slotContent}
-                                    </Tooltip>
-                                ) : (
-                                    <React.Fragment key={slot.id}>
-                                        {slotContent}
-                                    </React.Fragment>
-                                );
-                            })}
-
-                            {isToday && (
-                                <Box sx={{ 
-                                    position: 'absolute', 
-                                    top: HEADER_HEIGHT + ((new Date().getHours() * 60 + new Date().getMinutes() - (START_HOUR * 60)) * pixelsPerMinute), 
-                                    left: 0, right: 0, borderTop: '2px solid #d32f2f', zIndex: 20, pointerEvents: 'none',
-                                    '&::before': { content: '""', position: 'absolute', top: -4, left: -3, width: 8, height: 8, borderRadius: '50%', bgcolor: '#d32f2f' }
-                                }} />
-                            )}
-                        </Box>
+                    const slotContent = (
+                      <Box
+                        onClick={(e) => { e.stopPropagation(); handleSlotClick(slot); }}
+                        onDoubleClick={(e) => { e.stopPropagation(); handleSlotDoubleClick(slot); }}
+                        sx={{
+                          position: 'absolute',
+                          top: topOffset,
+                          height: durationMinutes * pixelsPerMinute,
+                          left: 4,
+                          right: 4,
+                          bgcolor: blockColor,
+                          color: 'white',
+                          borderRadius: '4px',
+                          p: '4px 8px',
+                          fontSize: '0.75rem',
+                          cursor: 'pointer',
+                          overflow: 'hidden',
+                          zIndex: 1,
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                          borderLeft: '4px solid rgba(0,0,0,0.3)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          transition: 'transform 0.1s',
+                          '&:hover': { zIndex: 10, filter: 'brightness(1.1)', transform: 'scale(1.01)' }
+                        }}
+                      >
+                        <Typography variant="caption" sx={{ fontWeight: 'bold', lineHeight: 1.2 }} noWrap>
+                          {slot.aliasTitle || slot.taskTitle}
+                        </Typography>
+                        {(hourHeight === 120 || durationMinutes >= 30) && (
+                          <Typography variant="caption" sx={{ fontSize: '0.65rem', opacity: 0.9 }} noWrap>
+                            {format(start, 'HH:mm')}-{format(end, 'HH:mm')}
+                          </Typography>
+                        )}
+                      </Box>
                     );
-                })}
-            </Box>
+
+                    return showTooltip ? (
+                      <Tooltip
+                        key={slot.id}
+                        title={slot.note || '（無說明）'}
+                        arrow
+                        placement="right"
+                        enterDelay={500}
+                      >
+                        {slotContent}
+                      </Tooltip>
+                    ) : (
+                      <React.Fragment key={slot.id}>
+                        {slotContent}
+                      </React.Fragment>
+                    );
+                  })}
+
+                  {isToday && (
+                    <Box sx={{
+                      position: 'absolute',
+                      top: (new Date().getHours() * 60 + new Date().getMinutes() - (START_HOUR * 60)) * pixelsPerMinute,
+                      left: 0, right: 0, borderTop: '2px solid #d32f2f', zIndex: 20, pointerEvents: 'none',
+                      '&::before': { content: '""', position: 'absolute', top: -4, left: -3, width: 8, height: 8, borderRadius: '50%', bgcolor: '#d32f2f' }
+                    }} />
+                  )}
+                </Box>
+              );
+            })}
+          </Box>
         </Box>
       </Paper>
 
+      {/* 編輯時間紀錄 Dialog */}
       <Dialog open={!!editingLog} onClose={() => setEditingLog(null)} maxWidth="xs" fullWidth>
         <DialogTitle>編輯時間紀錄</DialogTitle>
         <DialogContent>
-           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <DatePicker 
-                label="日期"
-                value={editDate}
-                onChange={(d) => setEditDate(d)}
-                slotProps={{ textField: { fullWidth: true, size: 'small' } }}
-              />
-              <Box sx={{ display: 'flex', gap: 2 }}>
-                <TextField label="開始 (HH:mm)" fullWidth value={editStart} onChange={(e) => setEditStart(e.target.value)} size="small" />
-                <TextField label="結束 (HH:mm)" fullWidth value={editEnd} onChange={(e) => setEditEnd(e.target.value)} disabled={!editingLog?.endTime && editEnd === ''} size="small" />
-              </Box>
-           </Box>
+          <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <DatePicker
+              label="日期"
+              value={editDate}
+              onChange={(d) => setEditDate(d)}
+              slotProps={{ textField: { fullWidth: true, size: 'small' } }}
+            />
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField label="開始 (HH:mm)" fullWidth value={editStart} onChange={(e) => setEditStart(e.target.value)} size="small" />
+              <TextField label="結束 (HH:mm)" fullWidth value={editEnd} onChange={(e) => setEditEnd(e.target.value)} disabled={!editingLog?.endTime && editEnd === ''} size="small" />
+            </Box>
+            <FormControl fullWidth size="small">
+              <InputLabel>時間分類</InputLabel>
+              <Select
+                value={editSubCategory}
+                label="時間分類"
+                onChange={(e) => setEditSubCategory(e.target.value)}
+              >
+                <MenuItem value=""><em>無</em></MenuItem>
+                {subCategories.map(sc => (
+                  <MenuItem key={sc} value={sc}>{sc}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth size="small">
+              <InputLabel>關聯任務（可選）</InputLabel>
+              <Select
+                value={editTaskId}
+                label="關聯任務（可選）"
+                onChange={(e) => setEditTaskId(e.target.value)}
+              >
+                <MenuItem value=""><em>無（未分類）</em></MenuItem>
+                {activeTasks.map(t => (
+                  <MenuItem key={t.id} value={t.id}>
+                    {t.aliasTitle ? `${t.title} (${t.aliasTitle})` : t.title}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              label="說明（此 timeslot 的備註）"
+              fullWidth
+              multiline
+              rows={2}
+              size="small"
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+              placeholder="記錄本次工作的具體內容..."
+            />
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button color="error" onClick={handleDeleteLog}>刪除紀錄</Button>
@@ -480,17 +549,31 @@ export const TimeTracker: React.FC = () => {
         <DialogTitle>新增時間紀錄</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <FormControl fullWidth size="small" required>
-              <InputLabel>選擇任務</InputLabel>
+            <FormControl fullWidth size="small">
+              <InputLabel>選擇任務（可選）</InputLabel>
               <Select
                 value={quickAddTaskId}
-                label="選擇任務"
+                label="選擇任務（可選）"
                 onChange={(e) => setQuickAddTaskId(e.target.value)}
               >
-                {tasks.map(t => (
+                <MenuItem value=""><em>無（未分類）</em></MenuItem>
+                {activeTasks.map(t => (
                   <MenuItem key={t.id} value={t.id}>
                     {t.aliasTitle ? `${t.title} (${t.aliasTitle})` : t.title}
                   </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth size="small">
+              <InputLabel>時間分類（可選）</InputLabel>
+              <Select
+                value={quickAddSubCategory}
+                label="時間分類（可選）"
+                onChange={(e) => setQuickAddSubCategory(e.target.value)}
+              >
+                <MenuItem value=""><em>無</em></MenuItem>
+                {subCategories.map(sc => (
+                  <MenuItem key={sc} value={sc}>{sc}</MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -504,12 +587,28 @@ export const TimeTracker: React.FC = () => {
               <TextField label="開始 (HH:mm)" fullWidth value={quickAddStart} onChange={(e) => setQuickAddStart(e.target.value)} size="small" />
               <TextField label="結束 (HH:mm)" fullWidth value={quickAddEnd} onChange={(e) => setQuickAddEnd(e.target.value)} size="small" />
             </Box>
+            <TextField
+              label="說明（可選）"
+              fullWidth
+              multiline
+              rows={2}
+              size="small"
+              value={quickAddNote}
+              onChange={(e) => setQuickAddNote(e.target.value)}
+              placeholder="記錄本次工作的具體內容..."
+            />
           </Box>
         </DialogContent>
         <DialogActions sx={{ justifyContent: 'space-between' }}>
           <Button
             size="small"
-            onClick={() => { setQuickAddOpen(false); setEditingTask(undefined); setTaskFormOpen(true); }}
+            onClick={() => {
+              pendingQuickAdd.current = true;
+              prevTaskIdsRef.current = new Set(tasks.map(t => t.id));
+              setQuickAddOpen(false);
+              setEditingTask(undefined);
+              setTaskFormOpen(true);
+            }}
           >
             建立新任務
           </Button>
@@ -518,7 +617,7 @@ export const TimeTracker: React.FC = () => {
             <Button
               variant="contained"
               onClick={handleQuickAddSave}
-              disabled={!quickAddTaskId || !quickAddStart || !quickAddEnd}
+              disabled={!quickAddStart || !quickAddEnd}
             >
               確認新增
             </Button>
@@ -528,7 +627,17 @@ export const TimeTracker: React.FC = () => {
 
       <TaskForm
         open={taskFormOpen}
-        onClose={() => { setTaskFormOpen(false); setEditingTask(undefined); }}
+        onClose={() => {
+          setTaskFormOpen(false);
+          setEditingTask(undefined);
+          if (pendingQuickAdd.current) {
+            pendingQuickAdd.current = false;
+            const latestTasks = useTaskStore.getState().tasks;
+            const newTask = latestTasks.find(t => !prevTaskIdsRef.current.has(t.id));
+            if (newTask) setQuickAddTaskId(newTask.id);
+            setQuickAddOpen(true);
+          }
+        }}
         initialData={editingTask}
       />
     </Box>

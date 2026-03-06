@@ -25,11 +25,10 @@ const formatDateOnly = (ts: number | undefined) => {
 };
 
 const ArchivePage: React.FC = () => {
-  const { tasks, mainCategories, subCategories, unarchiveTask, deleteTask, undo } = useTaskStore();
+  const { tasks, timeslots, mainCategories, unarchiveTask, deleteTask, undo } = useTaskStore();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMainCats, setSelectedMainCats] = useState<string[]>([]);
-  const [selectedSubCats, setSelectedSubCats] = useState<string[]>([]);
 
   // Delete confirmation
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
@@ -43,6 +42,18 @@ const ArchivePage: React.FC = () => {
   const [snackbarMsg, setSnackbarMsg] = useState('');
   const [lastAction, setLastAction] = useState<'unarchive' | 'delete' | null>(null);
 
+  // 預先計算每個任務的累計工時
+  const taskTotalTimeMap = useMemo(() => {
+    const map = new Map<string, number>();
+    timeslots.forEach(ts => {
+      if (ts.taskId && ts.endTime) {
+        const existing = map.get(ts.taskId) || 0;
+        map.set(ts.taskId, existing + (ts.endTime - ts.startTime));
+      }
+    });
+    return map;
+  }, [timeslots]);
+
   const archivedTasks = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return tasks
@@ -55,13 +66,11 @@ const ArchivePage: React.FC = () => {
           if (!matchTitle && !matchAlias && !matchDesc) return false;
         }
         if (selectedMainCats.length > 0 && !selectedMainCats.includes(t.mainCategory || '其他')) return false;
-        if (selectedSubCats.length > 0 && !selectedSubCats.includes(t.subCategory || '其他')) return false;
         return true;
       })
-      .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0)); // 最新封存排最前
-  }, [tasks, searchQuery, selectedMainCats, selectedSubCats]);
+      .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0));
+  }, [tasks, searchQuery, selectedMainCats]);
 
-  // 找父任務標題（用於顯示脈絡）
   const getParentTitle = (task: Task): string | undefined => {
     if (!task.parentId) return undefined;
     const parent = tasks.find(t => t.id === task.parentId);
@@ -69,7 +78,7 @@ const ArchivePage: React.FC = () => {
   };
 
   const statusMap: Record<string, string> = {
-    TODO: '待處理', IN_PROGRESS: '進行中', PAUSED: '已暫停', DONE: '已完成',
+    BACKLOG: '待規劃', TODO: '待處理', IN_PROGRESS: '進行中', PAUSED: '已暫停', DONE: '已完成', CANCELLED: '已取消',
   };
 
   const handleUnarchive = (task: Task) => {
@@ -141,29 +150,6 @@ const ArchivePage: React.FC = () => {
             ))}
           </Select>
         </FormControl>
-
-        <FormControl sx={{ minWidth: 150 }} size="small">
-          <InputLabel>時間分類</InputLabel>
-          <Select
-            multiple
-            value={selectedSubCats}
-            onChange={(e) => setSelectedSubCats(e.target.value as string[])}
-            renderValue={(s) => s.length === 0 ? '全部' : `已選 (${s.length})`}
-            label="時間分類"
-          >
-            <Box sx={{ p: 1, display: 'flex', gap: 1 }}>
-              <Button size="small" startIcon={<SelectAll />} onClick={(e) => { e.stopPropagation(); setSelectedSubCats([...subCategories, '其他']); }}>全選</Button>
-              <Button size="small" startIcon={<FilterListOff />} onClick={(e) => { e.stopPropagation(); setSelectedSubCats([]); }}>清除</Button>
-            </Box>
-            <Divider />
-            {[...subCategories, '其他'].map(sc => (
-              <MenuItem key={sc} value={sc}>
-                <Checkbox checked={selectedSubCats.includes(sc)} />
-                <ListItemText primary={sc} />
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
       </Box>
 
       {/* Archive Table */}
@@ -173,7 +159,7 @@ const ArchivePage: React.FC = () => {
             <TableRow>
               <TableCell>任務名稱</TableCell>
               <TableCell>狀態</TableCell>
-              <TableCell>分類</TableCell>
+              <TableCell>任務分類</TableCell>
               <TableCell>預估完成</TableCell>
               <TableCell>累計工時</TableCell>
               <TableCell>封存時間</TableCell>
@@ -186,7 +172,7 @@ const ArchivePage: React.FC = () => {
                 <TableCell colSpan={7} align="center" sx={{ py: 8 }}>
                   <Archive sx={{ fontSize: 48, color: 'text.disabled', mb: 1, display: 'block', mx: 'auto' }} />
                   <Typography color="textSecondary">
-                    {searchQuery || selectedMainCats.length > 0 || selectedSubCats.length > 0
+                    {searchQuery || selectedMainCats.length > 0
                       ? '查無符合條件的封存任務'
                       : '封存庫是空的，可從任務管理頁封存已完成的任務'}
                   </Typography>
@@ -194,6 +180,7 @@ const ArchivePage: React.FC = () => {
               </TableRow>
             ) : archivedTasks.map(task => {
               const parentTitle = getParentTitle(task);
+              const totalTime = taskTotalTimeMap.get(task.id) || 0;
               return (
                 <TableRow key={task.id} hover sx={{ opacity: 0.85 }}>
                   <TableCell>
@@ -221,19 +208,18 @@ const ArchivePage: React.FC = () => {
                   <TableCell>
                     <Chip
                       label={statusMap[task.status] ?? task.status}
-                      color={task.status === 'DONE' ? 'success' : task.status === 'PAUSED' ? 'warning' : 'default'}
+                      color={task.status === 'DONE' ? 'success' : task.status === 'CANCELLED' ? 'error' : task.status === 'PAUSED' ? 'warning' : 'default'}
                       size="small"
                     />
                   </TableCell>
                   <TableCell>
-                    <Chip label={task.mainCategory || '其他'} size="small" variant="outlined" sx={{ mr: 0.5 }} />
-                    <Chip label={task.subCategory || '其他'} size="small" variant="outlined" color="primary" />
+                    <Chip label={task.mainCategory || '其他'} size="small" variant="outlined" />
                   </TableCell>
                   <TableCell>
                     <Typography variant="caption">{formatDateOnly(task.estimatedEndDate)}</Typography>
                   </TableCell>
                   <TableCell sx={{ fontVariantNumeric: 'tabular-nums' }}>
-                    <Typography variant="caption">{formatTime(task.totalTimeSpent)}</Typography>
+                    <Typography variant="caption">{formatTime(totalTime)}</Typography>
                   </TableCell>
                   <TableCell>
                     <Typography variant="caption">{formatDateOnly(task.archivedAt)}</Typography>
@@ -262,7 +248,7 @@ const ArchivePage: React.FC = () => {
         <DialogTitle>確認永久刪除</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            確定要永久刪除「<strong>{taskToDelete?.title}</strong>」嗎？此操作將刪除所有相關時間紀錄與工作產出，<strong>無法透過 Undo 復原</strong>。
+            確定要永久刪除「<strong>{taskToDelete?.title}</strong>」嗎？此操作將刪除任務資料，<strong>無法透過 Undo 復原</strong>。
             {taskToDeleteHasChildren && (
               <Typography component="span" color="error" display="block" sx={{ mt: 1 }}>
                 ⚠️ 此任務底下還有子任務，將會一併刪除。

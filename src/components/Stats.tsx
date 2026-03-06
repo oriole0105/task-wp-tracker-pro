@@ -19,7 +19,7 @@ const formatDuration = (totalMinutes: number) => {
 };
 
 export const Stats: React.FC = () => {
-  const { tasks } = useTaskStore();
+  const { tasks, timeslots } = useTaskStore();
   
   // Default to current week (Sunday to Saturday)
   const [startDate, setStartDate] = useState<Date | null>(startOfWeek(new Date(), { weekStartsOn: 0 }));
@@ -67,19 +67,18 @@ export const Stats: React.FC = () => {
     const subMap = new Map<string, number>();
     let totalMs = 0;
 
-    tasks.forEach(task => {
-        task.timeLogs.forEach(log => {
-            const effectiveStart = Math.max(log.startTime, start);
-            const effectiveEnd = Math.min(log.endTime || Date.now(), end);
-            if (effectiveStart < end && effectiveEnd > start) {
-                const duration = effectiveEnd - effectiveStart;
-                totalMs += duration;
-                const mainKey = task.mainCategory || '其他';
-                const subKey = task.subCategory || '其他';
-                mainMap.set(mainKey, (mainMap.get(mainKey) || 0) + duration);
-                subMap.set(subKey, (subMap.get(subKey) || 0) + duration);
-            }
-        });
+    timeslots.forEach(ts => {
+        const effectiveStart = Math.max(ts.startTime, start);
+        const effectiveEnd = Math.min(ts.endTime || Date.now(), end);
+        if (effectiveStart < end && effectiveEnd > start) {
+            const duration = effectiveEnd - effectiveStart;
+            totalMs += duration;
+            const task = ts.taskId ? tasks.find(t => t.id === ts.taskId) : undefined;
+            const mainKey = task?.mainCategory || '未分類';
+            const subKey = ts.subCategory || '其他';
+            mainMap.set(mainKey, (mainMap.get(mainKey) || 0) + duration);
+            subMap.set(subKey, (subMap.get(subKey) || 0) + duration);
+        }
     });
 
     const formatData = (map: Map<string, number>) => {
@@ -95,7 +94,7 @@ export const Stats: React.FC = () => {
         stats: { main: formatData(mainMap), sub: formatData(subMap) },
         totalMinutes: totalMin
     };
-  }, [tasks, startDate, endDate]);
+  }, [tasks, timeslots, startDate, endDate]);
 
   const renderTooltip = (value: any) => {
       const percent = totalMinutes > 0 ? ((value / totalMinutes) * 100).toFixed(1) : 0;

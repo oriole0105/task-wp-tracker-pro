@@ -4,6 +4,217 @@
 
 ---
 
+## [Unreleased] — 2026-03-07
+
+### 新功能 (Features)
+
+- **甘特圖模式切換（週報模式 / 工作盤點模式）**
+  - 週報頁新增 ToggleButtonGroup，可切換兩種甘特圖顯示區間，預設為「週報模式」
+  - **週報模式**：以今日為中心，前後各一個月
+  - **工作盤點模式**：每兩個月規劃一次；以當前或最近一個奇數月（1/3/5/7/9/11 月）的 1 日為錨點，往前 15 天、往後 2 個月
+  - 模式選擇 UI 旁顯示對應的日期區間供確認
+
+- **假日 / 個人休息日管理**
+  - `Task` Store 新增 `holidays: string[]` 狀態（`yyyy-MM-dd` 格式），提供 `addHoliday` / `deleteHoliday` action
+  - 系統設定頁（CategoryManager）新增「假日 / 個人休息日」管理區塊：日期選擇器 + 新增按鈕 + 列表與刪除
+  - 完整備份（匯出 / 還原）同步支援 `holidays` 欄位
+  - 甘特圖：區間內的假日以 `lightblue` 標示（與週六日相同）
+
+### 問題修正 (Bug Fixes)
+
+- **甘特圖 DONE 任務無 timeslot 時不顯示**
+  - 根因：`DONE` / `CANCELLED` 任務若無任何 timeslot，`actualStart` / `actualEnd` 均為 `undefined`，導致甘特列被略過不渲染
+  - 修正：當 `DONE` / `CANCELLED` 任務缺少 actual 日期時，改 fallback 至 `estimatedStartDate` / `estimatedEndDate`，確保任務仍可在甘特圖上顯示
+  - 同樣邏輯適用於 `IN_PROGRESS` / `PAUSED` 任務（actual start 有值但 actual end 尚未確定時，fallback 至估計結束日）
+
+- **甘特圖今日標記被週末/假日顏色覆蓋**
+  - 根因：PlantUML Gantt 中同一天的顏色以「最先宣告者」為準；今日標記原位於週末/假日規則之後，導致顏色被蓋掉
+  - 修正：將今日標記行移到 `Project starts` 之後、週六日規則之前，確保今日橘色永遠優先顯示
+
+### UX / 調整
+
+- **甘特圖配色更新**
+  - `IN_PROGRESS` 任務顏色：`DodgerBlue` → `deepskyblue`（更醒目）
+  - 週六與週日統一標示為 `lightblue`（原本均無特別標示）
+
+- **週報頁 WBS 區間 vs 甘特圖區間分離**
+  - WBS 活躍任務篩選繼續使用固定的「今日前後各一個月」範圍
+  - 甘特圖改依 `ganttMode` 選擇的 `ganttRange` 獨立計算
+
+- **工作產出追蹤頁週起始統一為週日**
+  - `OutputReportPage` 的「前一週 / 後一週」按鈕、日期區間預設值改用 `weekStartsOn: 0`（週日），與統計報表頁一致
+
+---
+
+## [Unreleased] — 2026-03-06 (c)
+
+### 新功能 (Features)
+
+- **任務排序操作（TaskList）**
+  - 每列任務操作欄新增 4 個排序按鈕（帶 Tooltip）：
+    - `↑` 向上：與上一個同層任務互換順序
+    - `↓` 向下：與下一個同層任務互換順序
+    - `←` 向前：提升層級（脫離父任務，成為父任務的同層）
+    - `→` 向後：降低層級（成為上一個同層任務的子任務）
+  - 不可用時自動 disable（已是第一個、已是根層、無上一同層任務等）
+  - Store 新增 `reorderTask(id, direction)` action，支援 undo
+
+- **WBS / 甘特圖顯示設定拆分**
+  - `Task` 型別原有 `showInGantt` 拆為 `showInWbs` 與 `showInGantt` 兩個獨立欄位
+  - TaskForm 改為兩個並排勾選框：「顯示於 WBS」與「顯示於甘特圖」
+  - WeeklyReportPage：WBS 圖依 `showInWbs` 篩選；甘特圖依 `showInGantt` 篩選
+  - 日期必填驗證維持僅綁定「顯示於甘特圖」
+
+### 問題修正 / UX 調整
+
+- **WBS 圖顯示修正**
+  - 移除 `skinparam monochrome true`，節點顏色可正常顯示
+  - 節點顏色改用 PlantUML 顏色名稱（`#lightblue`、`#pink` 等），取代 hex 色碼以確保渲染相容性
+
+---
+
+## [Unreleased] — 2026-03-06 (b)
+
+### 新功能 (Features)
+
+- **WBS 節點依任務狀態自動著色**
+  - BACKLOG / TODO → `#lightblue`（淺藍）
+  - IN_PROGRESS → 無色（預設白色）
+  - PAUSED → `#pink`（粉紅）
+  - DONE → `#lightgreen`（淺綠）
+  - CANCELLED → `#yellow`（黃色）
+  - 語法採用 PlantUML 顏色名稱（如 `***[#lightblue] 任務名稱`），不使用 hex 色碼以確保渲染相容性；有顏色時色碼緊貼星號，無色（進行中）則省略色碼區塊
+
+- **任務暫停原因（Pause Reason）欄位**
+  - `Task` 型別新增 `pauseReason?: string`
+  - TaskForm 中，當狀態切換為「已暫停 (Paused)」時動態顯示多行文字欄位「暫停原因」
+  - 儲存時寫入 `task.pauseReason`；切換為其他狀態時自動清除該欄位
+
+### UX / 調整
+
+- **WBS 區塊標題**：`WBS 階層圖 (生產性產出)` → `WBS 階層圖`（移除括號說明文字）
+- **甘特圖今日標記**：顏色由 `LightCyan`（淡藍）改為 `Orange`（橘色），Switch 說明文字同步更新
+
+---
+
+## [Unreleased] — 2026-03-06
+
+### UX / 更名
+
+- **應用程式更名為 WorkScope Planner**
+  - AppBar 標題、瀏覽器分頁標題（`index.html`）均由 `Task Time Tracker` 改為 `WorkScope Planner`
+  - 反映應用核心已從「時間計時」轉向「任務規劃 + 工作產出連動」
+
+- **「儀表板」更名為「排程視圖」**
+  - 導覽列按鈕文字：`儀表板` → `排程視圖`
+  - 排程視圖頁面標題：`Dashboard` → `排程視圖`
+
+- **導覽列順序調整**
+  - 新順序：任務管理 / 工作產出 / 排程視圖 / 統計報表 / 週報生成 / 封存庫 / 系統設定
+  - 將核心工作流程（任務管理、工作產出）置前，時間輔助功能（排程視圖、統計）置後
+
+---
+
+## [Unreleased] — 2026-03-05
+
+### 新功能 (Features)
+
+- **工作產出類型管理（OutputType）**
+  - 新增 `OutputType { id, name, isTangible }` 實體，預設提供五種類型：實體產出（有形）、決策、知識/研究、流程/規範、其他（後四者為無形）
+  - `WorkOutput` 新增 `outputTypeId?`（關聯類型）與 `summary?`（無形產出摘要）欄位
+  - **TaskForm 工作產出編輯器** 重新設計：
+    - 第一列：名稱、類型下拉選單、完成度、刪除按鈕
+    - 第二列（依類型切換）：有形產出 → 連結輸入欄；無形產出 → 摘要多行文字欄
+  - **工作產出追蹤頁面（OutputReportPage）**：以 Chip 顯示產出類型（有形藍色、無形紫色）；無形產出顯示摘要文字，有形產出顯示可點擊連結
+  - **系統設定頁（CategoryManager）** 新增「工作產出類型」區塊：可新增、編輯（名稱 + 有形/無形）、刪除
+  - Store 新增 `outputTypes` 狀態與 `addOutputType`、`updateOutputType`、`deleteOutputType` 三個 action
+  - `importFullData` 支援匯入 `outputTypes`（無此欄位時以預設值填補），`handleFullExport` 同時匯出 `outputTypes`
+  - 修改範圍：`types/index.ts`、`useTaskStore.ts`、`TaskForm.tsx`、`CategoryManager.tsx`、`OutputReportPage.tsx`
+
+---
+
+## [Unreleased] — 2026-03-04 (b)
+
+### 新功能 (Features)
+
+- **甘特圖今日標記開關**
+  - 週報頁篩選面板新增「甘特圖選項」區塊
+  - Switch 開關「顯示今日標記」（預設開啟）
+  - 啟用時在 PlantUML Gantt 原始碼末尾插入 `YYYY-MM-DD is colored in LightCyan`，將今日欄位以淡藍色 highlight
+  - 關閉時省略該行，輸出乾淨無標記的甘特圖
+
+---
+
+## [Unreleased] — 2026-03-04
+
+### 新功能 (Features)
+
+- **Timeslot 獨立說明（note）欄位**
+  - `Timeslot.note` 欄位已存在，現在在 UI 完整開放讀寫：
+    - **快速新增 Dialog**：新增「說明（可選）」多行文字欄位
+    - **編輯時間紀錄 Dialog**：新增「說明（此 timeslot 的備註）」多行文字欄位
+  - Dashboard 時間方塊 **Tooltip 改為顯示 timeslot 自己的 note**（原本顯示任務詳細說明），空白時顯示「（無說明）」
+  - 解決同一任務下不同 timeslot 記錄不同工作內容的需求
+
+- **TaskForm 甘特圖必填日期驗證**
+  - 當「顯示於週報與甘特圖」勾選時，**預估開始日期**與**預估完成日期**強制為必填
+  - 欄位標題加上「\*」提示；若未填即儲存，欄位顯示紅框與錯誤提示文字「顯示於甘特圖時為必填」
+  - 填入日期後錯誤狀態自動清除
+
+---
+
+## [Unreleased] — 2026-03-03 (b)
+
+### 新功能 (Features)
+
+- **任務狀態擴充：BACKLOG / CANCELLED**
+  - `TaskStatus` 新增 `BACKLOG`（待規劃，屬 todo 類別）與 `CANCELLED`（已取消，屬 done 類別）
+  - `CANCELLED` 任務與 `DONE` 一樣可透過封存按鈕移至封存庫；「封存所有已完成」按鈕同時封存 `CANCELLED` 任務
+  - 狀態 Chip 顏色：`BACKLOG` → default；`CANCELLED` → error（紅色）
+  - `isOverdue` 判斷：`CANCELLED` 與 `DONE` 同視為「已結束」，不標記為逾期
+  - WeeklyReport Gantt：`CANCELLED` 任務以灰色（Silver）呈現；`DONE`/`CANCELLED` 預設完成度 100%
+
+- **任務整體完成度 (Task Completeness)**
+  - `Task` 型別新增 `completeness?: number`（0–100）
+  - TaskForm 新增「整體完成度 (%)」輸入欄位（步進 5）
+  - TaskList 狀態欄旁以 caption 顯示完成度（若已設定）
+  - WeeklyReport Gantt：優先使用 `task.completeness`，未設定時依狀態預設（DONE/CANCELLED → 100%，其他 → 0%）
+
+### 問題修正 / UX 調整
+
+- **Dashboard 快速新增 Timeslot 預設結束時間**：由 +1 小時改為 +30 分鐘
+
+- **TaskForm 版面調整**
+  - 「預估開始日期」與「預估完成日期」並排於同一列
+  - 「任務負責人」與「任務指派人」並排於同一列
+  - 「任務狀態」移至「任務分類」右側同列
+
+---
+
+## [Unreleased] — 2026-03-03
+
+### 架構重構 (Refactoring)
+
+- **Timeslot 抽離為頂層獨立實體**
+  - `Timeslot` 介面新增為頂層型別，`subCategory` 從 `Task` 移至 `Timeslot`
+  - `Task` 移除 `timeLogs`、`totalTimeSpent`、`subCategory` 三個欄位
+  - Store 新增 `timeslots: Timeslot[]` 狀態，並加入 `addTimeslot`、`updateTimeslot`、`deleteTimeslot`、`getTaskTotalTime` 四個 action
+  - 移除 `startTimer`、`stopTimer`、`manualAddTimeLog`、`updateTimeLog`、`deleteTimeLog` 等 timer 相關 action
+  - `updateSubCategory` 改為更新 `timeslots[].subCategory`（而非 `tasks[].subCategory`）
+  - `_history` 型別由 `Task[][]` 改為 `{ tasks; timeslots }[]`，undo 同時還原兩者
+  - `persist` partialize 新增 `timeslots` 欄位
+  - 支援建立「無連結任務」的 timeslot，統計中以「未分類」呈現
+  - Dashboard 快速新增 timeslot：任務改為**可選**，新增 subCategory 下拉選單
+  - 編輯時間紀錄 Dialog：新增 subCategory 與關聯任務選單（可重新指定或解除）
+  - TaskList：累計工時改從 timeslots 計算，移除播放/暫停計時按鈕，移除 subCategory 篩選
+  - TaskForm：移除 subCategory 欄位
+  - Stats、WeeklyReportPage、OutputReportPage、ArchivePage 全部改從 timeslots 計算
+  - 週報頁移除「排除時間分類」篩選 UI（任務不再有 subCategory）
+  - 新增遷移腳本 `scripts/migrate-to-independent-timeslots.html`（瀏覽器端 localStorage 資料遷移工具）
+  - 修改範圍：`types/index.ts`、`useTaskStore.ts`、`TimeTracker.tsx`、`TaskList.tsx`、`TaskForm.tsx`、`Stats.tsx`、`WeeklyReportPage.tsx`、`OutputReportPage.tsx`、`ArchivePage.tsx`
+
+---
+
 ## [Unreleased] — 2026-02-26
 
 ### 新功能 (Features)
@@ -60,6 +271,20 @@
   - 修改範圍：`TimeTracker.tsx`（新增 `clickTimerRef`、`handleSlotDoubleClick`、引入 `TaskForm`）
 
 ### 問題修正 (Bug Fixes)
+
+- **Dashboard 日期標頭捲動時消失**
+  - 根因：日期標頭使用 `position: sticky; top: 0`，在 nested flex container 中瀏覽器實作不穩定，捲動後標頭隨內容滾出畫面
+  - 修正：將日期標頭列移出 scroll 容器，改為 Paper 上方獨立固定列（`flexShrink: 0`），捲動時永遠保持可見
+  - 同時移除 slot top offset 與現在時間紅線的 `HEADER_HEIGHT` 偏移（因 header 已在 scroll 區域外）
+  - 精簡（60px/hr）與詳細（120px/hr）模式均已修正
+
+- **Dashboard 時間範圍擴展為完整 24hr**
+  - `START_HOUR` 從 7 改為 0，`END_HOUR` 從 22 改為 23，顯示 00:00–23:00
+  - 預設捲動位置維持 7:00（有 timeslot 時捲到最早紀錄前一小時）
+
+- **Quick Add timeslot：點「建立新任務」後時間資訊消失**
+  - 根因：「建立新任務」按鈕直接關閉 Quick Add Dialog，TaskForm 關閉後不會重新開啟
+  - 修正：以 `pendingQuickAdd` ref 記錄流程，TaskForm 關閉後自動重開 Quick Add Dialog，並透過 `useTaskStore.getState()` 即時偵測新建任務，自動預選至下拉選單
 
 - **深色模式：Dashboard 時間軸與日期標頭不可見**
   - 根因：`bgcolor: '#fafafa'`（時間欄）與 `bgcolor: '#f5f5f5'`（日期標頭）在 dark mode 下造成淺背景配白色文字

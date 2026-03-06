@@ -73,6 +73,24 @@
 
 ---
 
+### BUG-006 — Dashboard 日期標頭捲動時消失
+- **狀態**：✅ 已解決（2026-02-26）
+- **嚴重度**：高
+- **描述**：Dashboard 在精簡與詳細兩種模式下，捲動 Y 軸 scrollbar 時，上方日期標頭（週一、週二...等）會隨內容滾出畫面消失。
+- **根因**：日期標頭設定 `position: sticky; top: 0`，但在 nested flex container（scroll container → dates container → date column → header）中，瀏覽器（特別是 webkit）無法正確識別捲動祖先，導致 sticky 失效。
+- **修正**：將日期標頭列移出 scroll 容器，改為 Paper 上方獨立固定 flex row（`flexShrink: 0`），與 scroll 容器並列於 column 方向；同步移除 slot top offset 與現在時間紅線的 `HEADER_HEIGHT` 偏移。
+
+---
+
+### BUG-007 — Quick Add Timeslot：點「建立新任務」後時間資訊消失
+- **狀態**：✅ 已解決（2026-02-26）
+- **嚴重度**：中
+- **描述**：在 Dashboard 空白格點擊開啟「新增時間紀錄」Dialog 後，若點「建立新任務」按鈕，Quick Add Dialog 關閉且預填的日期/時間資訊遺失；TaskForm 關閉後無法繼續完成時間紀錄新增。
+- **根因**：「建立新任務」按鈕直接呼叫 `setQuickAddOpen(false)`，TaskForm 的 `onClose` 只還原 TaskForm 狀態，不重新開啟 Quick Add。
+- **修正**：新增 `pendingQuickAdd` ref 與 `prevTaskIdsRef` 追蹤流程；TaskForm 關閉時若 `pendingQuickAdd` 為 true，使用 `useTaskStore.getState()` 取得最新任務陣列，偵測新建任務並自動預選，再重新開啟 Quick Add Dialog。
+
+---
+
 ## 已解決 (Resolved - Features)
 
 ### ENH-009 — 任務封存機制（Archive）
@@ -161,7 +179,7 @@
 
 | 類別 | 數量 |
 |---|---|
-| ✅ 已解決 BUG | 5 |
+| ✅ 已解決 BUG | 7 |
 | ✅ 已解決功能 | 2 |
 | 📋 待處理功能 | 2 |
 | 💡 建議功能 | 5 |
