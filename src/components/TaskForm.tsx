@@ -5,8 +5,9 @@ import {
   Grid, Box, Typography, IconButton, Paper, Divider, Chip,
   FormControlLabel, Checkbox
 } from '@mui/material';
-import { Add, Delete, Link as LinkIcon, Label as LabelIcon, AccountTree } from '@mui/icons-material';
+import { Add, Delete, Link as LinkIcon, Label as LabelIcon, AccountTree, InfoOutlined } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { format } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import type { Task, TaskStatus, WorkOutput } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
@@ -19,7 +20,7 @@ interface TaskFormProps {
 }
 
 export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, parentId }) => {
-  const { tasks, mainCategories, outputTypes, addTask, updateTask, getTaskById } = useTaskStore();
+  const { tasks, timeslots, mainCategories, outputTypes, addTask, updateTask, getTaskById } = useTaskStore();
 
   const [title, setTitle] = useState('');
   const [aliasTitle, setAliasTitle] = useState('');
@@ -33,6 +34,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
   const [completeness, setCompleteness] = useState<number | ''>('');
   const [showInWbs, setShowInWbs] = useState(true);
   const [showInGantt, setShowInGantt] = useState(true);
+  const [showInReport, setShowInReport] = useState(true);
   const [dateError, setDateError] = useState(false);
   const [outputs, setOutputs] = useState<WorkOutput[]>([]);
   const [labels, setLabels] = useState<string[]>([]);
@@ -76,6 +78,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setPauseReason(initialData.pauseReason || '');
       setShowInWbs(initialData.showInWbs !== undefined ? initialData.showInWbs : true);
       setShowInGantt(initialData.showInGantt !== undefined ? initialData.showInGantt : true);
+      setShowInReport(initialData.showInReport !== false);
       setOutputs(initialData.outputs || []);
       setLabels(initialData.labels || []);
       setCurrentParentId(initialData.parentId || '');
@@ -92,6 +95,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setPauseReason('');
       setShowInWbs(true);
       setShowInGantt(true);
+      setShowInReport(true);
       setOutputs([]);
       setLabels([]);
       setCurrentParentId(parentId);
@@ -109,6 +113,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setPauseReason('');
       setShowInWbs(true);
       setShowInGantt(true);
+      setShowInReport(true);
       setOutputs([]);
       setLabels([]);
       setCurrentParentId('');
@@ -116,6 +121,17 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
     setNewLabel('');
     setDateError(false);
   }, [initialData, parentId, open, getTaskById]);
+
+  // 實際開始日/完成日：從 timeslots 動態計算，不儲存於 Task
+  const computedActualDates = useMemo(() => {
+    if (!initialData) return null;
+    const taskTs = timeslots.filter(ts => ts.taskId === initialData.id);
+    if (taskTs.length === 0) return null;
+    const actualStart = Math.min(...taskTs.map(ts => ts.startTime));
+    const endedTs = taskTs.filter(ts => ts.endTime);
+    const actualEnd = endedTs.length > 0 ? Math.max(...endedTs.map(ts => ts.endTime!)) : undefined;
+    return { start: actualStart, end: actualEnd };
+  }, [initialData, timeslots]);
 
   const handleAddLabel = () => {
     const trimmed = newLabel.trim();
@@ -164,6 +180,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       pauseReason: status === 'PAUSED' ? pauseReason : undefined,
       showInWbs,
       showInGantt,
+      showInReport,
       outputs,
       labels,
       parentId: currentParentId || undefined,
@@ -306,6 +323,34 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
             />
           </Grid>
 
+          {/* 實際日期說明（唯讀，從 timeslots 計算） */}
+          <Grid size={{ xs: 12 }}>
+            <Box sx={{ display: 'flex', gap: 1, p: 1.5, bgcolor: 'action.hover', borderRadius: 1, alignItems: 'flex-start' }}>
+              <InfoOutlined fontSize="small" color="info" sx={{ mt: 0.2, flexShrink: 0 }} />
+              <Box>
+                <Typography variant="caption" sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                  <span>
+                    <b>實際開始日</b>（自動）：
+                    {computedActualDates
+                      ? <b> {format(computedActualDates.start, 'yyyy-MM-dd HH:mm')}</b>
+                      : ' 尚無時間紀錄'}
+                  </span>
+                  <span>
+                    <b>實際完成日</b>（自動）：
+                    {computedActualDates?.end
+                      ? <b> {format(computedActualDates.end, 'yyyy-MM-dd HH:mm')}</b>
+                      : ' —'}
+                  </span>
+                </Typography>
+                <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.5 }}>
+                  實際日期由時間紀錄（Timeslot）自動推算，無需手動填寫。
+                  實際開始日 = 最早一筆 timeslot 的開始時間；
+                  實際完成日 = 最晚一筆 timeslot 的結束時間（僅 DONE / CANCELLED 任務的甘特圖使用）。
+                </Typography>
+              </Box>
+            </Box>
+          </Grid>
+
           <Grid size={{ xs: 12, md: 6 }}>
             <TextField label="任務負責人" fullWidth value={assignee} onChange={(e) => setAssignee(e.target.value)} />
           </Grid>
@@ -327,7 +372,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
               }}
             />
           </Grid>
-          <Grid size={{ xs: 12, md: 6 }} sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Grid size={{ xs: 12, md: 6 }} sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
             <FormControlLabel
               control={<Checkbox checked={showInWbs} onChange={(e) => setShowInWbs(e.target.checked)} />}
               label="顯示於 WBS"
@@ -335,6 +380,10 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
             <FormControlLabel
               control={<Checkbox checked={showInGantt} onChange={(e) => setShowInGantt(e.target.checked)} />}
               label="顯示於甘特圖"
+            />
+            <FormControlLabel
+              control={<Checkbox checked={showInReport} onChange={(e) => setShowInReport(e.target.checked)} />}
+              label="顯示於週報進度表"
             />
           </Grid>
 
@@ -429,6 +478,23 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
                                     />
                                 </Grid>
                             )}
+                            {/* Row 3：歸屬期間（週期型產出選填） */}
+                            <Grid size={{ xs: 12, md: 6 }}>
+                                <DatePicker
+                                    label="歸屬期間（選填，週期型產出）"
+                                    value={output.effectiveDate ? new Date(output.effectiveDate + 'T00:00:00') : null}
+                                    onChange={(date: Date | null) => {
+                                        handleUpdateOutput(output.id, 'effectiveDate', date ? format(date, 'yyyy-MM-dd') : '');
+                                    }}
+                                    slotProps={{
+                                        textField: {
+                                            size: 'small',
+                                            fullWidth: true,
+                                            helperText: '週期型產出（如每週會議報告）請填歸屬日期；持續型產出（如長期文件）留空',
+                                        },
+                                    }}
+                                />
+                            </Grid>
                         </Grid>
                     </Paper>
                     );

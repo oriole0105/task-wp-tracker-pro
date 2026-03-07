@@ -24,6 +24,12 @@ export interface OutputType {
   isTangible: boolean;
 }
 
+export interface WeeklySnapshot {
+  weekStart: string;    // 'yyyy-MM-dd'（週日為起始）
+  completeness: number; // 0-100
+  note?: string;
+}
+
 export interface WorkOutput {
   id: string;
   name: string;
@@ -31,8 +37,10 @@ export interface WorkOutput {
   summary?: string;       // 無形產出的說明/摘要
   link?: string;          // 有形產出的連結
   completeness?: string;
+  effectiveDate?: string;   // 'yyyy-MM-dd'，產出歸屬的期間（週期型產出用）；無值代表持續型產出
   mainCategory?: string;
   subCategory?: string;
+  weeklySnapshots?: WeeklySnapshot[];
 }
 
 export interface Task {
@@ -52,6 +60,7 @@ export interface Task {
 
   status: TaskStatus;
   completeness?: number; // 0-100，任務整體完成度
+  weeklySnapshots?: WeeklySnapshot[];
   pauseReason?: string;
 
   parentId?: string;
@@ -59,6 +68,7 @@ export interface Task {
   labels: string[];
   showInWbs: boolean;
   showInGantt: boolean;
+  showInReport?: boolean; // 顯示於週報進度表，預設 true；固定會議等可設為 false
   archived?: boolean;
   archivedAt?: number;
 }

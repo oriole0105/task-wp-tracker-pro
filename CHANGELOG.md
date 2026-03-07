@@ -4,6 +4,94 @@
 
 ---
 
+## [Unreleased] — 2026-03-07 (e)
+
+### 新功能 (Features)
+
+- **週報頁：報告類型泛化（週報 / 雙月盤點 / 半年報）**
+  - 新增「報告類型」切換器（選項面板內）：週報 / 雙月盤點 / 半年報
+  - 切換後 `reportPeriod`（當期範圍）和 `prevPeriod`（前一期）自動重算
+    - 週報：以週日為起始的 7 天期間
+    - 雙月盤點：Jan-Feb / Mar-Apr / May-Jun / Jul-Aug / Sep-Oct / Nov-Dec
+    - 半年報：Jan-Jun / Jul-Dec
+  - 進度追蹤表導覽列統一控制（`< 前期 / 後期 >`），非當期顯示「目前」快速回跳按鈕
+  - 快照查詢升級：
+    - `getSnapshotAtOrBefore(snapshots, dateStr)` — 取上一期結束前最近一筆快照
+    - `getSnapshotInPeriod(snapshots, startStr, endStr)` — 取本期內最新一筆快照
+  - 表格欄位標題隨報告類型動態切換（上週% / 本週% / 週間△ ↔ 前期% / 本期% / 期間△）
+  - WBS 與 Gantt 的任務過濾範圍改為跟隨 `reportPeriod`
+  - 甘特圖：非週報模式直接使用 `reportPeriod` 為時軸範圍；週模式保留既有 `ganttMode` 切換
+  - 頂部資訊欄顯示目前統計範圍與報告類型名稱
+  - AsciiDoc 輸出標題與欄位名稱同步反映報告類型
+
+- **工作產出：歸屬期間 (`effectiveDate`)**
+  - `WorkOutput` 新增 `effectiveDate?: string`（'yyyy-MM-dd'）
+  - TaskForm 工作產出區塊新增「歸屬期間」DatePicker（選填）
+    - 週期型產出（如每週會議報告）填入歸屬日期
+    - 持續型產出（如長期文件）留空
+  - 週報進度追蹤表依 `effectiveDate` 篩選產出：
+    - 無 `effectiveDate` → 持續型，永遠顯示
+    - `effectiveDate` 在 `reportPeriod` 內 → 顯示
+    - `effectiveDate` 不在 `reportPeriod` 內 → 隱藏（避免跨期雜訊）
+  - 產出列顯示 `effectiveDate` 標籤（灰色小字），方便辨識歸屬期
+
+---
+
+## [Unreleased] — 2026-03-07 (d)
+
+### 新功能 (Features)
+
+- **進度追蹤表：預期完成日與時程績效指數 (SPI)**
+  - 新增「預期完成日」欄（取自 `estimatedEndDate`，格式 `MM/dd`）
+  - 新增「時程績效 SPI」欄，自動計算並顯示進度落後狀態
+    - SPI = 實際完成度 % ÷ 計畫進度 %（依 estimatedStartDate→estimatedEndDate 線性估算）
+    - ≥ 1.0：綠色「正常/超前」；0.8–1.0：橘色「落後」；< 0.8：紅色「嚴重落後」
+    - 欄位同時顯示計畫進度 %（例：「計畫進度 87%」）
+    - 無 `estimatedEndDate` 時顯示「—」
+  - SPI 欄位僅顯示於任務列，工作產出列留空
+  - AsciiDoc 輸出同步更新至 7 欄（`[cols="3,1.2,0.8,0.8,1,1.8,1"]`），SPI 以純文字格式輸出
+
+- **任務「顯示於週報進度表」設定 (`showInReport`)**
+  - `Task` 新增 `showInReport?: boolean` 欄位（預設 `true`，向下相容）
+  - TaskForm 新增「顯示於週報進度表」Checkbox（與 WBS / 甘特圖 Checkbox 並排）
+  - 固定會議等不需出現在進度追蹤表的任務，可取消勾選
+  - 週報進度追蹤表與 AsciiDoc 輸出均會過濾掉 `showInReport === false` 的任務
+
+---
+
+## [Unreleased] — 2026-03-07 (c)
+
+### 新功能 (Features)
+
+- **週報頁：進度追蹤表**
+  - 新增「進度追蹤表」區塊（位於 WBS → 甘特圖之後，頁面最底部）
+  - 以週為單位，對比上週 vs 本週的任務完成度與工作產出完成度
+  - 週次導覽列：`< 上一週 / 下一週 >` 按鈕 + 非當週時顯示「回到本週」按鈕
+  - 表格結構：任務列（粗體 + 分類）+ 縮排的產出子列（含產出類型 Chip）
+  - 「本週完成度」欄：有快照時顯示快照值；無快照時 fallback 至當前值並標示 `(目前)`
+  - 「週間變化」欄：`↑ +N%`（綠）/ `→ 持平`（灰）/ `↓ -N%`（紅）彩色 Chip
+  - **「複製 AsciiDoc」按鈕**：生成標準 AsciiDoc 5 欄表格（`[cols="3,1,1,1,1"]`），可直接貼入週報文件
+    - 任務列以 `*粗體*` + 分類顯示，產出列以不斷行空白縮排（`↳`）
+    - 完成度值、delta 符號、狀態文字均以純文字呈現，相容所有 AsciiDoc 環境
+  - 套用與 WBS/Gantt 相同的「排除任務分類」篩選
+
+---
+
+## [Unreleased] — 2026-03-07 (b)
+
+### 新功能 (Features)
+
+- **週完成度快照（WeeklySnapshot）**
+  - 新增 `WeeklySnapshot` 型別：`{ weekStart: string; completeness: number; note?: string }`（`weekStart` 格式為 `yyyy-MM-dd`，週日為起始）
+  - `Task` 加入 `weeklySnapshots?: WeeklySnapshot[]` 欄位
+  - `WorkOutput` 加入 `weeklySnapshots?: WeeklySnapshot[]` 欄位
+  - Store 新增 `upsertSnapshot` 工具函式：同一週內重複更新時以最新值覆蓋（upsert 語意）
+  - `updateTask` 在 `completeness` 有變動時，自動對當週進行快照
+  - `updateWorkOutput` 在 `completeness` 有變動時，自動對當週進行快照
+  - 無需額外 UI 操作，現有的完成度填寫流程自動累積歷史記錄，供後續週報差異計算使用
+
+---
+
 ## [Unreleased] — 2026-03-07
 
 ### 新功能 (Features)

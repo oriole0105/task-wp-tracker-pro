@@ -1,7 +1,17 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import type { Task, CategoryData, WorkOutput, Timeslot, OutputType } from '../types';
+import { format, startOfWeek } from 'date-fns';
+import type { Task, CategoryData, WorkOutput, Timeslot, OutputType, WeeklySnapshot } from '../types';
+
+const getCurrentWeekStart = (): string =>
+  format(startOfWeek(new Date(), { weekStartsOn: 0 }), 'yyyy-MM-dd');
+
+const upsertSnapshot = (snapshots: WeeklySnapshot[] = [], weekStart: string, completeness: number, note?: string): WeeklySnapshot[] => {
+  const idx = snapshots.findIndex(s => s.weekStart === weekStart);
+  const snap: WeeklySnapshot = { weekStart, completeness, ...(note !== undefined && { note }) };
+  return idx >= 0 ? snapshots.map((s, i) => i === idx ? snap : s) : [...snapshots, snap];
+};
 
 const DEFAULT_OUTPUT_TYPES: OutputType[] = [
   { id: 'ot-deliverable', name: '實體產出', isTangible: true },
@@ -96,6 +106,7 @@ export const useTaskStore = create<TaskState>()(
           labels: taskData.labels ?? [],
           showInWbs: taskData.showInWbs ?? true,
           showInGantt: taskData.showInGantt ?? true,
+          showInReport: taskData.showInReport ?? true,
         };
         set((state) => ({
           _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
@@ -106,7 +117,14 @@ export const useTaskStore = create<TaskState>()(
       updateTask: (id, updates) => {
         set((state) => ({
           _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
-          tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)),
+          tasks: state.tasks.map((t) => {
+            if (t.id !== id) return t;
+            const updated = { ...t, ...updates };
+            if (updates.completeness !== undefined) {
+              updated.weeklySnapshots = upsertSnapshot(t.weeklySnapshots, getCurrentWeekStart(), updates.completeness);
+            }
+            return updated;
+          }),
         }));
       },
 
@@ -165,7 +183,15 @@ export const useTaskStore = create<TaskState>()(
       updateWorkOutput: (taskId, outputId, updates) => set(s => ({
         tasks: s.tasks.map(t => t.id === taskId ? {
           ...t,
-          outputs: (t.outputs || []).map(o => o.id === outputId ? { ...o, ...updates } : o)
+          outputs: (t.outputs || []).map(o => {
+            if (o.id !== outputId) return o;
+            const updated = { ...o, ...updates };
+            if (updates.completeness !== undefined) {
+              const val = parseInt(updates.completeness ?? '0') || 0;
+              updated.weeklySnapshots = upsertSnapshot(o.weeklySnapshots, getCurrentWeekStart(), val);
+            }
+            return updated;
+          }),
         } : t)
       })),
 
