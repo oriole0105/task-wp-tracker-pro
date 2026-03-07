@@ -4,6 +4,59 @@
 
 ---
 
+## [Unreleased] — 2026-03-07 (h)
+
+### 新功能 (Features)
+
+- **ENH-010：雙月盤點 / 半年報差異化內容**
+  - **雙月盤點：雙時間軸設計**
+    - `ganttPeriod`（計畫展望）：本雙月對（整月邊界），WBS / Gantt 使用此區間，呈現**未來計畫**
+    - `progressPeriod`（工作成果）：前一個雙月對，進度表使用此區間，呈現**過去成果**
+    - 信息列同時顯示兩個區間，WBS 與進度表區塊各有標題條說明所用區間
+  - **半年報：週期修正為 12-5 月 / 6-11 月**
+    - 1-5 月錨點 → Dec(year-1) 1 ～ May(year) 31
+    - 6-11 月錨點 → Jun(year) 1 ～ Nov(year) 30
+    - 12 月錨點 → Dec(year) 1 ～ May(year+1) 31
+    - WBS / Gantt / 進度表使用同一半年區間
+  - **`progressTasks` 獨立計算**：不再依賴 `activeTasks`（ganttPeriod），從 `progressPeriod` 獨立篩選，確保雙月盤點的進度表正確呈現過去成果
+  - **新增「期間工作成果彙總」Section**（雙月 / 半年報 專用，進度表下方）：
+    1. **任務狀態統計**：DONE / IN_PROGRESS / PAUSED / CANCELLED / TODO / BACKLOG 各計數
+    2. **期間實際工時彙總**：依 timeslot 計算各 mainCategory 工時（小時 + 佔比）
+    3. **工作產出清單**：effectiveDate 落在 progressPeriod 內的所有產出（任務、產出名稱、類型、完成度、日期），依 effectiveDate 排序
+
+---
+
+## [Unreleased] — 2026-03-07 (g)
+
+### 修正 (Bug Fixes)
+
+- **週報進度表：設有 effectiveDate 的工作產出在切換期間後消失**
+  - **根因**：進度追蹤表的任務來源（`activeTasks`）只依據任務的估計日期與 timeslot 篩選。若任務在目標期間無 timeslot 或估計日期，整個任務列（含其產出）都不會出現，即使某個產出的 `effectiveDate` 恰好落在該期間內。
+  - **修正**：新增 `progressTasks` useMemo，在 `activeTasks` 基礎上，額外納入「有 output.effectiveDate 落在 reportPeriod 內」的任務。WBS / Gantt 仍使用原有的 `activeTasks`（行為不變）。
+  - 進度追蹤表主表格與 AsciiDoc 輸出均改為使用 `progressTasks`。
+
+---
+
+## [Unreleased] — 2026-03-07 (f)
+
+### 新功能 (Features)
+
+- **ENH-012：WeeklySnapshot 歷史補填 UI**
+  - **任務完成度歷史快照**（任務編輯 Dialog，僅編輯模式顯示）
+    - 新增可摺疊區塊「完成度歷史快照（N 筆）」，列出所有快照，最新在上
+    - 每列顯示週次（weekStart，`yyyy-MM-dd`）+ 可直接修改的完成度 % 輸入欄 + 刪除按鈕
+    - 修改與刪除**立即寫入 store**（含 undo 支援），不須等待「儲存任務」
+    - 新增快照：DatePicker 選任意日期（自動對齊至該週週日）+ 完成度 % → 按「新增」
+    - 同週已有快照時自動覆蓋（upsert 語意）
+  - **工作產出完成度快照**（各產出卡片底部）
+    - 新增可摺疊區塊「完成度快照（N 筆）」
+    - 快照列表可逐筆修改完成度 % 或刪除
+    - 新增快照：DatePicker + % → 按 + 按鈕
+    - 快照變更為 **local state**，隨「儲存任務」一起寫入（與其他產出欄位一致）
+  - Store 新增 `updateTaskSnapshots(id, snapshots)` action（僅更新 weeklySnapshots，不觸發 auto-upsert）
+
+---
+
 ## [Unreleased] — 2026-03-07 (e)
 
 ### 新功能 (Features)

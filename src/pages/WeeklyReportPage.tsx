@@ -6,11 +6,11 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Chip, IconButton, Tooltip,
 } from '@mui/material';
-import { ContentCopy, Assessment, Image as ImageIcon, Code, FilterList, AccountTree, Timeline, Layers, ViewWeek, Inventory2, ChevronLeft, ChevronRight, TrendingUp } from '@mui/icons-material';
+import { ContentCopy, Assessment, Image as ImageIcon, Code, FilterList, AccountTree, Timeline, Layers, ViewWeek, Inventory2, ChevronLeft, ChevronRight, TrendingUp, Summarize } from '@mui/icons-material';
 import { useTaskStore } from '../store/useTaskStore';
 import { startOfDay, endOfDay, addDays, addMonths, subMonths, subDays, subWeeks, addWeeks, startOfWeek, format, isValid } from 'date-fns';
 import plantumlEncoder from 'plantuml-encoder';
-import type { Task, TaskStatus, WeeklySnapshot } from '../types';
+import type { Task, TaskStatus, WeeklySnapshot, WorkOutput } from '../types';
 
 const WeeklyReportPage: React.FC = () => {
   const { tasks, timeslots, mainCategories, holidays, outputTypes } = useTaskStore();
@@ -19,72 +19,101 @@ const WeeklyReportPage: React.FC = () => {
   const [reportType, setReportType] = useState<'weekly' | 'bimonthly' | 'semiannual'>('weekly');
   const [reportAnchorDate, setReportAnchorDate] = useState<Date>(new Date());
 
-  const reportPeriod = useMemo(() => {
+  /**
+   * ganttPeriod：WBS / 甘特圖 的時間範圍
+   * - 週報：本週
+   * - 雙月盤點：本雙月對（目前月份所屬的 2 個月，以整月為邊界）→ 未來計畫
+   * - 半年報：當期半年（12-5月 或 6-11月），與 progressPeriod 相同
+   */
+  const ganttPeriod = useMemo(() => {
     if (reportType === 'weekly') {
       const weekStart = startOfWeek(reportAnchorDate, { weekStartsOn: 0 });
       return { start: startOfDay(weekStart), end: endOfDay(addDays(weekStart, 6)) };
     } else if (reportType === 'bimonthly') {
       const month = reportAnchorDate.getMonth(); // 0-11
       const year = reportAnchorDate.getFullYear();
-      // 雙月期間：Jan-Feb(0-1), Mar-Apr(2-3), May-Jun(4-5), Jul-Aug(6-7), Sep-Oct(8-9), Nov-Dec(10-11)
-      const periodStartMonth = month % 2 === 0 ? month : month - 1;
-      const periodStart = new Date(year, periodStartMonth, 1);
-      const periodEnd = new Date(year, periodStartMonth + 2, 0); // last day of 2nd month
-      return { start: startOfDay(periodStart), end: endOfDay(periodEnd) };
-    } else { // semiannual
+      // 本雙月對：Jan-Feb(0-1), Mar-Apr(2-3), ..., Nov-Dec(10-11)
+      const pairStart = month % 2 === 0 ? month : month - 1;
+      return {
+        start: startOfDay(new Date(year, pairStart, 1)),
+        end: endOfDay(new Date(year, pairStart + 2, 0)), // last day of 2nd month
+      };
+    } else {
+      // 半年報：12-5月 / 6-11月
       const month = reportAnchorDate.getMonth(); // 0-11
       const year = reportAnchorDate.getFullYear();
-      const isFirstHalf = month < 6;
-      const periodStart = new Date(year, isFirstHalf ? 0 : 6, 1);
-      const periodEnd = new Date(year, isFirstHalf ? 6 : 12, 0); // last day of Jun or Dec
-      return { start: startOfDay(periodStart), end: endOfDay(periodEnd) };
+      if (month >= 5 && month <= 10) {
+        // Jun-Nov
+        return { start: startOfDay(new Date(year, 5, 1)), end: endOfDay(new Date(year, 11, 0)) };
+      } else if (month === 11) {
+        // Dec → Dec(year) ~ May(year+1)
+        return { start: startOfDay(new Date(year, 11, 1)), end: endOfDay(new Date(year + 1, 5, 0)) };
+      } else {
+        // Jan-May → Dec(year-1) ~ May(year)
+        return { start: startOfDay(new Date(year - 1, 11, 1)), end: endOfDay(new Date(year, 5, 0)) };
+      }
     }
   }, [reportType, reportAnchorDate]);
 
+  /**
+   * progressPeriod：進度表 / 工作成果 的時間範圍
+   * - 週報：同 ganttPeriod（本週）
+   * - 雙月盤點：前一個雙月對（過去工作成果），與 ganttPeriod 不同
+   * - 半年報：同 ganttPeriod（同一半年區間）
+   */
+  const progressPeriod = useMemo(() => {
+    if (reportType === 'bimonthly') {
+      const month = reportAnchorDate.getMonth(); // 0-11
+      const year = reportAnchorDate.getFullYear();
+      const currPairStart = month % 2 === 0 ? month : month - 1;
+      // 前一個雙月對（JS Date 支援負 month 值，自動跨年處理）
+      return {
+        start: startOfDay(new Date(year, currPairStart - 2, 1)),
+        end: endOfDay(new Date(year, currPairStart, 0)), // last day of month before currPairStart
+      };
+    }
+    return ganttPeriod; // weekly & semiannual：同 ganttPeriod
+  }, [reportType, reportAnchorDate, ganttPeriod]);
+
   const prevPeriod = useMemo(() => {
     if (reportType === 'weekly') {
-      const prevStart = subWeeks(reportPeriod.start, 1);
+      const prevStart = subWeeks(progressPeriod.start, 1);
       return { start: startOfDay(prevStart), end: endOfDay(addDays(prevStart, 6)) };
     } else if (reportType === 'bimonthly') {
       return {
-        start: startOfDay(subMonths(reportPeriod.start, 2)),
-        end: endOfDay(subDays(reportPeriod.start, 1)),
+        start: startOfDay(subMonths(progressPeriod.start, 2)),
+        end: endOfDay(subDays(progressPeriod.start, 1)),
       };
     } else {
       return {
-        start: startOfDay(subMonths(reportPeriod.start, 6)),
-        end: endOfDay(subDays(reportPeriod.start, 1)),
+        start: startOfDay(subMonths(progressPeriod.start, 6)),
+        end: endOfDay(subDays(progressPeriod.start, 1)),
       };
     }
-  }, [reportType, reportPeriod]);
+  }, [reportType, progressPeriod]);
 
   const isCurrentPeriod = useMemo(() => {
     const now = new Date();
-    return now >= reportPeriod.start && now <= reportPeriod.end;
-  }, [reportPeriod]);
+    return now >= ganttPeriod.start && now <= ganttPeriod.end;
+  }, [ganttPeriod]);
 
   const periodLabels = useMemo(() => {
     const pStart = format(prevPeriod.start, 'yyyy-MM-dd');
     const pEnd = format(prevPeriod.end, 'yyyy-MM-dd');
-    const cStart = format(reportPeriod.start, 'yyyy-MM-dd');
-    const cEnd = format(reportPeriod.end, 'yyyy-MM-dd');
+    const cStart = format(progressPeriod.start, 'yyyy-MM-dd');
+    const cEnd = format(progressPeriod.end, 'yyyy-MM-dd');
     if (reportType === 'weekly') {
       return {
         prevShort: '上週%', currShort: '本週%', deltaLabel: '週間△',
         rangeDisplay: `上週：${pStart}　→　本週：${cStart}`,
       };
-    } else if (reportType === 'bimonthly') {
+    } else {
       return {
         prevShort: '前期%', currShort: '本期%', deltaLabel: '期間△',
         rangeDisplay: `前期：${pStart}～${pEnd}　→　本期：${cStart}～${cEnd}`,
       };
-    } else {
-      return {
-        prevShort: '前期%', currShort: '本期%', deltaLabel: '期間△',
-        rangeDisplay: `前半年：${pStart}～${pEnd}　→　本半年：${cStart}～${cEnd}`,
-      };
     }
-  }, [reportType, reportPeriod, prevPeriod]);
+  }, [reportType, progressPeriod, prevPeriod]);
 
   const navigatePeriod = (dir: 1 | -1) => {
     if (reportType === 'weekly') {
@@ -97,7 +126,6 @@ const WeeklyReportPage: React.FC = () => {
   };
 
   // --- Snapshot Helpers ---
-  // 取 prevPeriod 結束日前最近一筆快照（用於「上期/前期」欄）
   const getSnapshotAtOrBefore = (snapshots: WeeklySnapshot[] | undefined, dateStr: string): number | undefined => {
     if (!snapshots?.length) return undefined;
     const valid = snapshots
@@ -106,7 +134,6 @@ const WeeklyReportPage: React.FC = () => {
     return valid.length > 0 ? valid[valid.length - 1].completeness : undefined;
   };
 
-  // 取 reportPeriod 內最新一筆快照（用於「本期」欄）
   const getSnapshotInPeriod = (snapshots: WeeklySnapshot[] | undefined, startStr: string, endStr: string): number | undefined => {
     if (!snapshots?.length) return undefined;
     const valid = snapshots
@@ -136,11 +163,17 @@ const WeeklyReportPage: React.FC = () => {
     return depth;
   };
 
+  /**
+   * activeTasks：WBS / Gantt 的任務來源（使用 ganttPeriod）
+   * - 雙月盤點：本雙月對（未來計畫）
+   * - 半年報：當期半年
+   */
   const activeTasks = useMemo(() => {
-    const startTs = reportPeriod.start.getTime();
-    const endTs = reportPeriod.end.getTime();
+    const startTs = ganttPeriod.start.getTime();
+    const endTs = ganttPeriod.end.getTime();
 
     return tasks.filter(task => {
+      if (task.archived) return false;
       const depth = getTaskDepth(task);
       if (!selectedLevels.includes(depth)) return false;
 
@@ -154,7 +187,39 @@ const WeeklyReportPage: React.FC = () => {
 
       return hasEstimatedInRange || hasActualInRange;
     });
-  }, [tasks, timeslots, reportPeriod, selectedLevels]);
+  }, [tasks, timeslots, ganttPeriod, selectedLevels]);
+
+  /**
+   * progressTasks：進度表的任務來源（使用 progressPeriod）
+   * - 雙月盤點：前一個雙月對（工作成果）
+   * - 半年報 / 週報：同 ganttPeriod
+   * 獨立計算（不依賴 activeTasks），額外納入有 output.effectiveDate 落在當期的任務
+   */
+  const progressTasks = useMemo(() => {
+    const startTs = progressPeriod.start.getTime();
+    const endTs = progressPeriod.end.getTime();
+    const currStartStr = format(progressPeriod.start, 'yyyy-MM-dd');
+    const currEndStr = format(progressPeriod.end, 'yyyy-MM-dd');
+
+    return tasks.filter(task => {
+      if (task.archived) return false;
+      const depth = getTaskDepth(task);
+      if (!selectedLevels.includes(depth)) return false;
+
+      const hasEstimatedInRange = task.estimatedStartDate && task.estimatedStartDate <= endTs &&
+        (!task.estimatedEndDate || task.estimatedEndDate >= startTs);
+      const hasActualInRange = timeslots.some(ts => {
+        if (ts.taskId !== task.id) return false;
+        const logEnd = ts.endTime || Date.now();
+        return ts.startTime <= endTs && logEnd >= startTs;
+      });
+      const hasOutputInRange = task.outputs.some(o =>
+        o.effectiveDate && o.effectiveDate >= currStartStr && o.effectiveDate <= currEndStr
+      );
+
+      return hasEstimatedInRange || hasActualInRange || hasOutputInRange;
+    });
+  }, [tasks, timeslots, progressPeriod, selectedLevels]);
 
   // --- Gantt Options ---
   const [showTodayMark, setShowTodayMark] = useState(true);
@@ -162,9 +227,8 @@ const WeeklyReportPage: React.FC = () => {
   const [showPlantUmlSource, setShowPlantUmlSource] = useState(false);
 
   const ganttRange = useMemo(() => {
-    // 非週報模式：Gantt 範圍跟隨 reportPeriod
     if (reportType !== 'weekly') {
-      return reportPeriod;
+      return ganttPeriod; // 雙月/半年：使用 ganttPeriod
     }
     const today = new Date();
     if (ganttMode === 'weekly') {
@@ -186,7 +250,7 @@ const WeeklyReportPage: React.FC = () => {
         end: endOfDay(addMonths(anchor, 2)),
       };
     }
-  }, [reportType, reportPeriod, ganttMode]);
+  }, [reportType, ganttPeriod, ganttMode]);
 
   const ganttActiveTasks = useMemo(() => {
     const startTs = ganttRange.start.getTime();
@@ -278,8 +342,8 @@ const WeeklyReportPage: React.FC = () => {
     };
 
     const prevEndStr = format(prevPeriod.end, 'yyyy-MM-dd');
-    const currStartStr = format(reportPeriod.start, 'yyyy-MM-dd');
-    const currEndStr = format(reportPeriod.end, 'yyyy-MM-dd');
+    const currStartStr = format(progressPeriod.start, 'yyyy-MM-dd');
+    const currEndStr = format(progressPeriod.end, 'yyyy-MM-dd');
 
     const lines: string[] = [];
     lines.push(`=== 進度追蹤（${periodLabels.rangeDisplay}）`);
@@ -289,7 +353,7 @@ const WeeklyReportPage: React.FC = () => {
     lines.push(`|任務 / 工作產出 |預期完成日 |${periodLabels.prevShort.replace('%', '')}% |${periodLabels.currShort.replace('%', '')}% |${periodLabels.deltaLabel} |時程績效 SPI |狀態`);
     lines.push('');
 
-    activeTasks
+    progressTasks
       .filter(t => !t.archived && t.showInReport !== false && !excludedMainCats.includes(t.mainCategory || '其他'))
       .forEach(task => {
         const prevTask = getSnapshotAtOrBefore(task.weeklySnapshots, prevEndStr);
@@ -314,7 +378,6 @@ const WeeklyReportPage: React.FC = () => {
         lines.push(`|${statusLabels[task.status]}`);
         lines.push('');
 
-        // 依 effectiveDate 篩選產出
         const periodOutputs = task.outputs.filter(o =>
           !o.effectiveDate || (o.effectiveDate >= currStartStr && o.effectiveDate <= currEndStr)
         );
@@ -339,7 +402,7 @@ const WeeklyReportPage: React.FC = () => {
 
     lines.push('|===');
     return lines.join('\n');
-  }, [activeTasks, excludedMainCats, periodLabels, prevPeriod, reportPeriod, outputTypes]);
+  }, [progressTasks, excludedMainCats, periodLabels, prevPeriod, progressPeriod, outputTypes]);
 
   // --- WBS Generation ---
   const getWbsColor = (status: TaskStatus): string | null => {
@@ -347,7 +410,7 @@ const WeeklyReportPage: React.FC = () => {
     if (status === 'CANCELLED') return '#yellow';
     if (status === 'PAUSED') return '#pink';
     if (status === 'BACKLOG' || status === 'TODO') return '#lightblue';
-    return null; // IN_PROGRESS：不設定顏色
+    return null;
   };
 
   const wbsSource = useMemo(() => {
@@ -496,17 +559,85 @@ const WeeklyReportPage: React.FC = () => {
     ? `甘特圖｜${ganttMode === 'weekly' ? '週報模式' : '工作盤點模式'}（${format(ganttRange.start, 'MM/dd')}～${format(ganttRange.end, 'MM/dd')}）`
     : `甘特圖（${format(ganttRange.start, 'MM/dd')}～${format(ganttRange.end, 'MM/dd')}）`;
 
+  // --- Period Summary (ENH-010) ---
+  // 期間工作成果彙總 — 雙月盤點 / 半年報 專用
+  const periodSummary = useMemo(() => {
+    if (reportType === 'weekly') return null;
+
+    const startTs = progressPeriod.start.getTime();
+    const endTs = progressPeriod.end.getTime();
+    const currStartStr = format(progressPeriod.start, 'yyyy-MM-dd');
+    const currEndStr = format(progressPeriod.end, 'yyyy-MM-dd');
+
+    const filteredTasks = progressTasks.filter(
+      t => !t.archived && t.showInReport !== false && !excludedMainCats.includes(t.mainCategory || '其他')
+    );
+
+    // Block 1: 任務狀態統計
+    const statusCount: Record<TaskStatus, number> = {
+      DONE: 0, CANCELLED: 0, IN_PROGRESS: 0, PAUSED: 0, TODO: 0, BACKLOG: 0,
+    };
+    filteredTasks.forEach(t => { statusCount[t.status]++; });
+
+    // Block 2: 期間工時（以 timeslot startTime 落在 progressPeriod 計算）
+    const hoursByCategory = new Map<string, number>();
+    let totalMs = 0;
+    timeslots.forEach(ts => {
+      if (!ts.endTime) return;
+      const effectiveStart = Math.max(ts.startTime, startTs);
+      const effectiveEnd = Math.min(ts.endTime, endTs);
+      if (effectiveStart >= effectiveEnd) return;
+      const duration = effectiveEnd - effectiveStart;
+      const task = ts.taskId ? tasks.find(t => t.id === ts.taskId) : undefined;
+      const cat = task?.mainCategory || '未分類';
+      hoursByCategory.set(cat, (hoursByCategory.get(cat) || 0) + duration);
+      totalMs += duration;
+    });
+    const hourEntries = Array.from(hoursByCategory.entries()).sort((a, b) => b[1] - a[1]);
+
+    // Block 3: 完成的工作產出（effectiveDate 落在 progressPeriod）
+    const completedOutputs: { task: Task; output: WorkOutput }[] = [];
+    tasks.filter(t => !t.archived && !excludedMainCats.includes(t.mainCategory || '其他')).forEach(task => {
+      task.outputs.forEach(output => {
+        if (output.effectiveDate && output.effectiveDate >= currStartStr && output.effectiveDate <= currEndStr) {
+          completedOutputs.push({ task, output });
+        }
+      });
+    });
+    // 依 effectiveDate 排序
+    completedOutputs.sort((a, b) => (a.output.effectiveDate ?? '').localeCompare(b.output.effectiveDate ?? ''));
+
+    return { statusCount, filteredTotal: filteredTasks.length, hourEntries, totalMs, completedOutputs };
+  }, [reportType, progressPeriod, progressTasks, tasks, timeslots, excludedMainCats]);
+
+  const fmtHours = (ms: number) => `${(ms / 3600000).toFixed(1)}h`;
+
   return (
     <Box>
-      <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Assessment fontSize="large" /> 週報素材生成</Typography>
+      <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Assessment fontSize="large" /> 週報素材生成
+      </Typography>
 
+      {/* Info Bar */}
       <Paper sx={{ p: 2, mb: 3, bgcolor: 'action.selected' }}>
-        <Typography variant="body2">
-          <b>統計範圍：</b>{format(reportPeriod.start, 'yyyy-MM-dd')} ～ {format(reportPeriod.end, 'yyyy-MM-dd')}
-          （<b>{reportTypeLabel}</b>）
-        </Typography>
+        <Typography variant="body2" fontWeight="bold" gutterBottom>{reportTypeLabel}</Typography>
+        {reportType === 'bimonthly' ? (
+          <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            <Typography variant="body2">
+              <b>工作成果區間：</b>{format(progressPeriod.start, 'yyyy-MM-dd')} ～ {format(progressPeriod.end, 'yyyy-MM-dd')}
+            </Typography>
+            <Typography variant="body2">
+              <b>計畫展望區間：</b>{format(ganttPeriod.start, 'yyyy-MM-dd')} ～ {format(ganttPeriod.end, 'yyyy-MM-dd')}
+            </Typography>
+          </Box>
+        ) : (
+          <Typography variant="body2">
+            <b>統計範圍：</b>{format(ganttPeriod.start, 'yyyy-MM-dd')} ～ {format(ganttPeriod.end, 'yyyy-MM-dd')}
+          </Typography>
+        )}
       </Paper>
 
+      {/* Options Panel */}
       <Paper sx={{ p: 3, mb: 4, border: '1px dashed', borderColor: 'divider' }}>
         <Grid container spacing={3}>
           {/* Hierarchy Filter */}
@@ -528,7 +659,9 @@ const WeeklyReportPage: React.FC = () => {
 
           {/* Category Filter */}
           <Grid size={{ xs: 12 }}>
-            <Typography variant="subtitle2" color="primary" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}><FilterList fontSize="inherit" /> 排除任務分類</Typography>
+            <Typography variant="subtitle2" color="primary" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <FilterList fontSize="inherit" /> 排除任務分類
+            </Typography>
             <FormGroup sx={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 1 }}>
               {[...mainCategories, '其他'].map(cat => (
                 <FormControlLabel key={cat} control={<Checkbox size="small" checked={excludedMainCats.includes(cat)} onChange={() => toggleMainExclusion(cat)} />} label={<Typography variant="body2">{cat}</Typography>} />
@@ -601,10 +734,25 @@ const WeeklyReportPage: React.FC = () => {
         </Grid>
       </Paper>
 
+      {/* WBS + Gantt（雙月：計畫展望區間；半年/週報：同進度區間） */}
+      {reportType === 'bimonthly' && (
+        <Paper sx={{ px: 3, py: 1.5, mb: 2, bgcolor: 'action.hover' }}>
+          <Typography variant="caption" color="text.secondary">
+            ▼ WBS / 甘特圖 — 計畫展望區間：{format(ganttPeriod.start, 'yyyy-MM-dd')} ～ {format(ganttPeriod.end, 'yyyy-MM-dd')}
+          </Typography>
+        </Paper>
+      )}
       {renderSection('WBS 階層圖', <AccountTree />, wbsSource)}
       {renderSection(ganttTitle, <Timeline />, ganttSource)}
 
       {/* Progress Table */}
+      {reportType === 'bimonthly' && (
+        <Paper sx={{ px: 3, py: 1.5, mb: 2, bgcolor: 'action.hover' }}>
+          <Typography variant="caption" color="text.secondary">
+            ▼ 進度追蹤表 — 工作成果區間：{format(progressPeriod.start, 'yyyy-MM-dd')} ～ {format(progressPeriod.end, 'yyyy-MM-dd')}
+          </Typography>
+        </Paper>
+      )}
       <Paper sx={{ p: 3, mb: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -648,10 +796,10 @@ const WeeklyReportPage: React.FC = () => {
             <TableBody>
               {(() => {
                 const prevEndStr = format(prevPeriod.end, 'yyyy-MM-dd');
-                const currStartStr = format(reportPeriod.start, 'yyyy-MM-dd');
-                const currEndStr = format(reportPeriod.end, 'yyyy-MM-dd');
+                const currStartStr = format(progressPeriod.start, 'yyyy-MM-dd');
+                const currEndStr = format(progressPeriod.end, 'yyyy-MM-dd');
 
-                const filteredTasks = activeTasks.filter(
+                const filteredTasks = progressTasks.filter(
                   t => !t.archived && t.showInReport !== false && !excludedMainCats.includes(t.mainCategory || '其他')
                 );
 
@@ -681,14 +829,12 @@ const WeeklyReportPage: React.FC = () => {
                     PAUSED: '暫停', DONE: '完成', CANCELLED: '取消',
                   };
 
-                  // 依 effectiveDate 篩選產出
                   const periodOutputs = task.outputs.filter(o =>
                     !o.effectiveDate || (o.effectiveDate >= currStartStr && o.effectiveDate <= currEndStr)
                   );
 
                   return (
                     <React.Fragment key={task.id}>
-                      {/* Task row */}
                       <TableRow sx={{ '& td': { borderTop: '2px solid', borderTopColor: 'divider' } }}>
                         <TableCell>
                           <Typography variant="body2" fontWeight="bold">{task.title}</Typography>
@@ -721,7 +867,6 @@ const WeeklyReportPage: React.FC = () => {
                         </TableCell>
                       </TableRow>
 
-                      {/* Output rows (filtered by effectiveDate) */}
                       {periodOutputs.map(output => {
                         const prevOut = getSnapshotAtOrBefore(output.weeklySnapshots, prevEndStr);
                         const thisOutSnap = getSnapshotInPeriod(output.weeklySnapshots, currStartStr, currEndStr);
@@ -774,6 +919,150 @@ const WeeklyReportPage: React.FC = () => {
         </TableContainer>
       </Paper>
 
+      {/* ENH-010：期間工作成果彙總 — 雙月盤點 / 半年報 */}
+      {periodSummary && (
+        <Paper sx={{ p: 3, mb: 4 }}>
+          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+            <Summarize /> 期間工作成果彙總
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 3 }}>
+            工作成果區間：{format(progressPeriod.start, 'yyyy-MM-dd')} ～ {format(progressPeriod.end, 'yyyy-MM-dd')}
+          </Typography>
+
+          {/* Block 1: 任務狀態統計 */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle2" fontWeight="bold" gutterBottom>任務狀態統計</Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              {([
+                { status: 'DONE' as TaskStatus, label: '完成', color: 'success' as const, variant: 'filled' as const },
+                { status: 'IN_PROGRESS' as TaskStatus, label: '進行中', color: 'primary' as const, variant: 'filled' as const },
+                { status: 'PAUSED' as TaskStatus, label: '暫停', color: 'warning' as const, variant: 'outlined' as const },
+                { status: 'CANCELLED' as TaskStatus, label: '取消', color: 'default' as const, variant: 'outlined' as const },
+                { status: 'TODO' as TaskStatus, label: '待執行', color: 'default' as const, variant: 'outlined' as const },
+                { status: 'BACKLOG' as TaskStatus, label: '待規劃', color: 'default' as const, variant: 'outlined' as const },
+              ]).filter(({ status }) => periodSummary.statusCount[status] > 0).map(({ status, label, color, variant }) => (
+                <Chip
+                  key={status}
+                  label={`${label}：${periodSummary.statusCount[status]}`}
+                  color={color}
+                  variant={variant}
+                  size="medium"
+                />
+              ))}
+              <Chip label={`合計：${periodSummary.filteredTotal}`} variant="outlined" size="medium" />
+            </Box>
+          </Box>
+
+          <Divider sx={{ my: 2 }} />
+
+          {/* Block 2: 期間實際工時彙總 */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle2" fontWeight="bold" gutterBottom>期間實際工時彙總</Typography>
+            {periodSummary.hourEntries.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">此期間無工時紀錄</Typography>
+            ) : (
+              <TableContainer sx={{ maxWidth: 420 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: 'action.hover' }}>
+                      <TableCell><b>主分類</b></TableCell>
+                      <TableCell align="right"><b>工時</b></TableCell>
+                      <TableCell align="right"><b>佔比</b></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {periodSummary.hourEntries.map(([cat, ms]) => (
+                      <TableRow key={cat}>
+                        <TableCell>{cat}</TableCell>
+                        <TableCell align="right">{fmtHours(ms)}</TableCell>
+                        <TableCell align="right">{((ms / periodSummary.totalMs) * 100).toFixed(0)}%</TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow sx={{ bgcolor: 'action.selected' }}>
+                      <TableCell><b>合計</b></TableCell>
+                      <TableCell align="right"><b>{fmtHours(periodSummary.totalMs)}</b></TableCell>
+                      <TableCell align="right"><b>100%</b></TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Box>
+
+          <Divider sx={{ my: 2 }} />
+
+          {/* Block 3: 完成的工作產出 */}
+          <Box>
+            <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+              工作產出清單
+              <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                （effectiveDate 落在此期間）
+              </Typography>
+            </Typography>
+            {periodSummary.completedOutputs.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">此期間無標記 effectiveDate 的工作產出</Typography>
+            ) : (
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: 'action.hover' }}>
+                      <TableCell sx={{ fontWeight: 'bold' }}>任務</TableCell>
+                      <TableCell sx={{ fontWeight: 'bold' }}>工作產出</TableCell>
+                      <TableCell sx={{ fontWeight: 'bold' }}>類型</TableCell>
+                      <TableCell sx={{ fontWeight: 'bold' }} align="right">完成度</TableCell>
+                      <TableCell sx={{ fontWeight: 'bold' }}>對應日期</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {periodSummary.completedOutputs.map(({ task, output }) => {
+                      const otMeta = outputTypes.find(t => t.id === output.outputTypeId);
+                      return (
+                        <TableRow key={output.id}>
+                          <TableCell>
+                            <Typography variant="body2">{task.title}</Typography>
+                            {task.mainCategory && (
+                              <Typography variant="caption" color="text.secondary">{task.mainCategory}</Typography>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">{output.name}</Typography>
+                            {output.link && (
+                              <Typography variant="caption" sx={{ display: 'block' }}>
+                                <a href={output.link} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>
+                                  {output.link.length > 50 ? `${output.link.slice(0, 50)}…` : output.link}
+                                </a>
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {otMeta && (
+                              <Chip
+                                label={otMeta.name}
+                                size="small"
+                                color={otMeta.isTangible ? 'primary' : 'secondary'}
+                                variant="outlined"
+                                sx={{ height: 18, fontSize: '0.65rem' }}
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell align="right">
+                            {output.completeness
+                              ? <Typography variant="body2">{output.completeness}%</Typography>
+                              : <Typography variant="caption" color="text.disabled">—</Typography>}
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">{output.effectiveDate}</Typography>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Box>
+        </Paper>
+      )}
     </Box>
   );
 };

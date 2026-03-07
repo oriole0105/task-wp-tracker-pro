@@ -82,6 +82,8 @@ interface TaskState {
   unarchiveTask: (id: string) => void;
   archiveAllDone: () => void;
 
+  updateTaskSnapshots: (id: string, snapshots: WeeklySnapshot[]) => void;
+
   getTaskById: (id: string) => Task | undefined;
   getSubTasks: (parentId: string) => Task[];
 }
@@ -338,6 +340,13 @@ export const useTaskStore = create<TaskState>()(
       },
 
       toggleDarkMode: () => set((state) => ({ darkMode: !state.darkMode })),
+
+      updateTaskSnapshots: (id, snapshots) => {
+        set((state) => ({
+          _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
+          tasks: state.tasks.map(t => t.id === id ? { ...t, weeklySnapshots: snapshots } : t),
+        }));
+      },
 
       getTaskById: (id) => get().tasks.find((t) => t.id === id),
       getSubTasks: (parentId) => get().tasks.filter((t) => t.parentId === parentId),
