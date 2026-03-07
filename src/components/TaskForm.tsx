@@ -8,9 +8,12 @@ import {
 import { Add, Delete, Link as LinkIcon, Label as LabelIcon, AccountTree, InfoOutlined, ExpandMore, ExpandLess } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { format, startOfWeek } from 'date-fns';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { v4 as uuidv4 } from 'uuid';
 import type { Task, TaskStatus, WorkOutput, WeeklySnapshot } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
+
+const CHART_COLORS = ['#1976d2', '#e91e63', '#4caf50', '#ff9800', '#9c27b0', '#00bcd4', '#795548'];
 
 interface TaskFormProps {
   open: boolean;
@@ -40,6 +43,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
   const [labels, setLabels] = useState<string[]>([]);
   const [newLabel, setNewLabel] = useState('');
   const [pauseReason, setPauseReason] = useState('');
+  const [pauseReasonError, setPauseReasonError] = useState(false);
   const [currentParentId, setCurrentParentId] = useState<string>('');
 
   // --- Snapshot management state ---
@@ -56,6 +60,24 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
     if (!initialData) return [];
     return tasks.find(t => t.id === initialData.id)?.weeklySnapshots ?? [];
   }, [tasks, initialData]);
+
+  // 完成度趨勢圖資料：task + 所有有快照的 output 各一條線
+  const completenessChartData = useMemo(() => {
+    const allDates = new Set<string>();
+    currentTaskSnapshots.forEach(s => allDates.add(s.weekStart));
+    outputs.forEach(o => (o.weeklySnapshots ?? []).forEach(s => allDates.add(s.weekStart)));
+    if (allDates.size === 0) return [];
+    return Array.from(allDates).sort().map(date => {
+      const point: Record<string, string | number | undefined> = { date: date.slice(5) }; // MM-DD
+      const taskSnap = currentTaskSnapshots.find(s => s.weekStart === date);
+      if (taskSnap !== undefined) point['task'] = taskSnap.completeness;
+      outputs.forEach(o => {
+        const snap = (o.weeklySnapshots ?? []).find(s => s.weekStart === date);
+        if (snap !== undefined) point[o.id] = snap.completeness;
+      });
+      return point;
+    });
+  }, [currentTaskSnapshots, outputs]);
 
   // Helper to get all descendants of a task to prevent circular references
   const getDescendantIds = (taskId: string): string[] => {
@@ -134,6 +156,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
     }
     setNewLabel('');
     setDateError(false);
+    setPauseReasonError(false);
     // Reset snapshot UI state
     setShowTaskSnapshots(false);
     setNewSnapDate(null);
@@ -230,6 +253,11 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       return;
     }
     setDateError(false);
+    if (status === 'PAUSED' && !pauseReason.trim()) {
+      setPauseReasonError(true);
+      return;
+    }
+    setPauseReasonError(false);
     const taskData = {
       title,
       aliasTitle,
@@ -355,13 +383,19 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
           {status === 'PAUSED' && (
             <Grid size={{ xs: 12 }}>
               <TextField
-                label="暫停原因"
+                label="暫停原因 *"
                 fullWidth
                 multiline
                 rows={2}
+                required
                 placeholder="說明任務暫停的原因或待解決的阻礙..."
                 value={pauseReason}
-                onChange={(e) => setPauseReason(e.target.value)}
+                error={pauseReasonError}
+                helperText={pauseReasonError ? '暫停狀態必須填寫暫停原因' : undefined}
+                onChange={(e) => {
+                  setPauseReason(e.target.value);
+                  if (e.target.value.trim()) setPauseReasonError(false);
+                }}
               />
             </Grid>
           )}
@@ -542,6 +576,43 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
                   <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.5 }}>
                     日期自動對齊至該週週日（weekStart）。同週已有快照時會覆蓋。
                   </Typography>
+
+                  {/* 完成度趨勢圖 */}
+                  {completenessChartData.length > 0 && (
+                    <>
+                      <Divider sx={{ my: 1.5 }} />
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                        完成度趨勢（任務整體 + 各工作產出）
+                      </Typography>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <LineChart data={completenessChartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.2)" />
+                          <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                          <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} unit="%" />
+                          <ChartTooltip formatter={(v: number | undefined) => v !== undefined ? `${v}%` : ''} />
+                          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                          {currentTaskSnapshots.length > 0 && (
+                            <Line
+                              type="monotone" dataKey="task" name="任務整體"
+                              stroke={CHART_COLORS[0]} strokeWidth={2} dot={{ r: 3 }} connectNulls
+                            />
+                          )}
+                          {outputs
+                            .filter(o => (o.weeklySnapshots ?? []).length > 0)
+                            .map((o, idx) => (
+                              <Line
+                                key={o.id} type="monotone" dataKey={o.id}
+                                name={o.name || `產出 ${idx + 1}`}
+                                stroke={CHART_COLORS[(idx + 1) % CHART_COLORS.length]}
+                                strokeWidth={1.5}
+                                strokeDasharray={idx % 2 !== 0 ? '4 2' : undefined}
+                                dot={{ r: 2 }} connectNulls
+                              />
+                            ))}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </>
+                  )}
                 </Paper>
               </Collapse>
             </Grid>

@@ -5,8 +5,10 @@ import {
   ToggleButton, ToggleButtonGroup,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Chip, IconButton, Tooltip,
+  Dialog, DialogTitle, DialogContent,
 } from '@mui/material';
-import { ContentCopy, Assessment, Image as ImageIcon, Code, FilterList, AccountTree, Timeline, Layers, ViewWeek, Inventory2, ChevronLeft, ChevronRight, TrendingUp, Summarize } from '@mui/icons-material';
+import { ContentCopy, Assessment, Image as ImageIcon, Code, FilterList, AccountTree, Timeline, Layers, ViewWeek, Inventory2, ChevronLeft, ChevronRight, TrendingUp, Summarize, ShowChart, Close } from '@mui/icons-material';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useTaskStore } from '../store/useTaskStore';
 import { startOfDay, endOfDay, addDays, addMonths, subMonths, subDays, subWeeks, addWeeks, startOfWeek, format, isValid } from 'date-fns';
 import plantumlEncoder from 'plantuml-encoder';
@@ -559,6 +561,66 @@ const WeeklyReportPage: React.FC = () => {
     ? `甘特圖｜${ganttMode === 'weekly' ? '週報模式' : '工作盤點模式'}（${format(ganttRange.start, 'MM/dd')}～${format(ganttRange.end, 'MM/dd')}）`
     : `甘特圖（${format(ganttRange.start, 'MM/dd')}～${format(ganttRange.end, 'MM/dd')}）`;
 
+  // --- Progress Table Split ---
+  // 依「本期完成度是否有變動 + 是否暫停」將任務分為有進展 / 無進展兩組
+  const progressSplit = useMemo(() => {
+    const prevEndStr = format(prevPeriod.end, 'yyyy-MM-dd');
+    const currStartStr = format(progressPeriod.start, 'yyyy-MM-dd');
+    const currEndStr = format(progressPeriod.end, 'yyyy-MM-dd');
+
+    const filtered = progressTasks.filter(
+      t => !t.archived && t.showInReport !== false && !excludedMainCats.includes(t.mainCategory || '其他')
+    );
+
+    const withProgress: Task[] = [];
+    const withoutProgress: Task[] = [];
+
+    filtered.forEach(task => {
+      // PAUSED 任務強制歸到無進展表
+      if (task.status === 'PAUSED') {
+        withoutProgress.push(task);
+        return;
+      }
+      const prevSnap = getSnapshotAtOrBefore(task.weeklySnapshots, prevEndStr);
+      const currSnap = getSnapshotInPeriod(task.weeklySnapshots, currStartStr, currEndStr);
+      const curr = currSnap ?? task.completeness;
+      const delta = prevSnap !== undefined && curr !== undefined ? curr - prevSnap : undefined;
+      if (delta !== undefined && delta !== 0) {
+        withProgress.push(task);
+      } else {
+        withoutProgress.push(task);
+      }
+    });
+
+    return { withProgress, withoutProgress, prevEndStr, currStartStr, currEndStr };
+  }, [progressTasks, excludedMainCats, prevPeriod, progressPeriod]);
+
+  // --- Completeness Trend Chart ---
+  const CHART_COLORS = ['#1976d2', '#e91e63', '#4caf50', '#ff9800', '#9c27b0', '#00bcd4', '#795548'];
+
+  const [chartTarget, setChartTarget] = useState<{
+    title: string;
+    taskSnapshots: WeeklySnapshot[];
+    outputLines: { name: string; snapshots: WeeklySnapshot[] }[];
+  } | null>(null);
+
+  const chartData = useMemo(() => {
+    if (!chartTarget) return [];
+    const allDates = new Set<string>();
+    chartTarget.taskSnapshots.forEach(s => allDates.add(s.weekStart));
+    chartTarget.outputLines.forEach(o => o.snapshots.forEach(s => allDates.add(s.weekStart)));
+    return Array.from(allDates).sort().map(date => {
+      const point: Record<string, string | number | undefined> = { date: date.slice(5) }; // MM-DD
+      const ts = chartTarget.taskSnapshots.find(s => s.weekStart === date);
+      if (ts !== undefined) point['task'] = ts.completeness;
+      chartTarget.outputLines.forEach(o => {
+        const snap = o.snapshots.find(s => s.weekStart === date);
+        if (snap !== undefined) point[o.name] = snap.completeness;
+      });
+      return point;
+    });
+  }, [chartTarget]);
+
   // --- Period Summary (ENH-010) ---
   // 期間工作成果彙總 — 雙月盤點 / 半年報 專用
   const periodSummary = useMemo(() => {
@@ -795,25 +857,19 @@ const WeeklyReportPage: React.FC = () => {
             </TableHead>
             <TableBody>
               {(() => {
-                const prevEndStr = format(prevPeriod.end, 'yyyy-MM-dd');
-                const currStartStr = format(progressPeriod.start, 'yyyy-MM-dd');
-                const currEndStr = format(progressPeriod.end, 'yyyy-MM-dd');
+                const { withProgress, prevEndStr, currStartStr, currEndStr } = progressSplit;
 
-                const filteredTasks = progressTasks.filter(
-                  t => !t.archived && t.showInReport !== false && !excludedMainCats.includes(t.mainCategory || '其他')
-                );
-
-                if (filteredTasks.length === 0) {
+                if (withProgress.length === 0) {
                   return (
                     <TableRow>
-                      <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
-                        <Typography color="text.secondary">此範圍內無任務</Typography>
+                      <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                        <Typography color="text.secondary">此範圍內無進展中的任務</Typography>
                       </TableCell>
                     </TableRow>
                   );
                 }
 
-                return filteredTasks.map(task => {
+                return withProgress.map(task => {
                   const prevTask = getSnapshotAtOrBefore(task.weeklySnapshots, prevEndStr);
                   const thisTaskSnap = getSnapshotInPeriod(task.weeklySnapshots, currStartStr, currEndStr);
                   const thisTask = thisTaskSnap ?? task.completeness;
@@ -837,10 +893,31 @@ const WeeklyReportPage: React.FC = () => {
                     <React.Fragment key={task.id}>
                       <TableRow sx={{ '& td': { borderTop: '2px solid', borderTopColor: 'divider' } }}>
                         <TableCell>
-                          <Typography variant="body2" fontWeight="bold">{task.title}</Typography>
-                          {task.mainCategory && (
-                            <Typography variant="caption" color="text.secondary">{task.mainCategory}</Typography>
-                          )}
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <Box>
+                              <Typography variant="body2" fontWeight="bold">{task.title}</Typography>
+                              {task.mainCategory && (
+                                <Typography variant="caption" color="text.secondary">{task.mainCategory}</Typography>
+                              )}
+                            </Box>
+                            {((task.weeklySnapshots?.length ?? 0) > 0 ||
+                              task.outputs.some(o => (o.weeklySnapshots?.length ?? 0) > 0)) && (
+                              <Tooltip title="查看完成度趨勢">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => setChartTarget({
+                                    title: task.title,
+                                    taskSnapshots: task.weeklySnapshots ?? [],
+                                    outputLines: task.outputs
+                                      .filter(o => (o.weeklySnapshots?.length ?? 0) > 0)
+                                      .map(o => ({ name: o.name || '未命名產出', snapshots: o.weeklySnapshots ?? [] })),
+                                  })}
+                                >
+                                  <ShowChart fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                          </Box>
                         </TableCell>
                         <TableCell>
                           {task.estimatedEndDate
@@ -918,6 +995,147 @@ const WeeklyReportPage: React.FC = () => {
           </Table>
         </TableContainer>
       </Paper>
+
+      {/* 本期無進展任務（PAUSED 或完成度未變動） */}
+      {progressSplit.withoutProgress.length > 0 && (
+        <Paper sx={{ p: 3, mb: 4 }}>
+          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+            本期無進展任務
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+            包含：暫停中任務、本期完成度與前期相同（無變動）的任務
+          </Typography>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow sx={{ bgcolor: 'action.hover' }}>
+                  <TableCell sx={{ fontWeight: 'bold', width: '28%' }}>任務 / 工作產出</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '9%' }}>預期完成日</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '8%' }}>{periodLabels.prevShort}</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '8%' }}>{periodLabels.currShort}</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '10%' }}>狀態</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '37%' }}>原因 / 說明</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {progressSplit.withoutProgress.map(task => {
+                  const { prevEndStr, currStartStr, currEndStr } = progressSplit;
+                  const prevTask = getSnapshotAtOrBefore(task.weeklySnapshots, prevEndStr);
+                  const thisTaskSnap = getSnapshotInPeriod(task.weeklySnapshots, currStartStr, currEndStr);
+                  const thisTask = thisTaskSnap ?? task.completeness;
+
+                  const statusColors: Record<TaskStatus, 'default' | 'primary' | 'warning' | 'success' | 'error' | 'secondary'> = {
+                    BACKLOG: 'default', TODO: 'primary', IN_PROGRESS: 'primary',
+                    PAUSED: 'warning', DONE: 'success', CANCELLED: 'secondary',
+                  };
+                  const statusLabels: Record<TaskStatus, string> = {
+                    BACKLOG: '待規劃', TODO: '待執行', IN_PROGRESS: '進行中',
+                    PAUSED: '暫停', DONE: '完成', CANCELLED: '取消',
+                  };
+
+                  const periodOutputs = task.outputs.filter(o =>
+                    !o.effectiveDate || (o.effectiveDate >= currStartStr && o.effectiveDate <= currEndStr)
+                  );
+
+                  return (
+                    <React.Fragment key={task.id}>
+                      <TableRow sx={{ '& td': { borderTop: '2px solid', borderTopColor: 'divider' } }}>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <Box>
+                              <Typography variant="body2" fontWeight="bold">{task.title}</Typography>
+                              {task.mainCategory && (
+                                <Typography variant="caption" color="text.secondary">{task.mainCategory}</Typography>
+                              )}
+                            </Box>
+                            {((task.weeklySnapshots?.length ?? 0) > 0 ||
+                              task.outputs.some(o => (o.weeklySnapshots?.length ?? 0) > 0)) && (
+                              <Tooltip title="查看完成度趨勢">
+                                <IconButton size="small" onClick={() => setChartTarget({
+                                  title: task.title,
+                                  taskSnapshots: task.weeklySnapshots ?? [],
+                                  outputLines: task.outputs
+                                    .filter(o => (o.weeklySnapshots?.length ?? 0) > 0)
+                                    .map(o => ({ name: o.name || '未命名產出', snapshots: o.weeklySnapshots ?? [] })),
+                                })}>
+                                  <ShowChart fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                          </Box>
+                        </TableCell>
+                        <TableCell>
+                          {task.estimatedEndDate
+                            ? <Typography variant="body2">{format(task.estimatedEndDate, 'MM/dd')}</Typography>
+                            : <Typography variant="caption" color="text.disabled">—</Typography>}
+                        </TableCell>
+                        <TableCell>
+                          {prevTask !== undefined
+                            ? <Typography variant="body2">{prevTask}%</Typography>
+                            : <Typography variant="caption" color="text.disabled">—</Typography>}
+                        </TableCell>
+                        <TableCell>
+                          {renderCompleteness(thisTask, thisTaskSnap === undefined && thisTask !== undefined)}
+                        </TableCell>
+                        <TableCell>
+                          <Chip label={statusLabels[task.status]} size="small"
+                            color={statusColors[task.status]} variant="outlined" />
+                        </TableCell>
+                        <TableCell>
+                          {task.status === 'PAUSED' && task.pauseReason ? (
+                            <Typography variant="body2" color="warning.main" sx={{ whiteSpace: 'pre-wrap' }}>
+                              {task.pauseReason}
+                            </Typography>
+                          ) : (
+                            <Typography variant="caption" color="text.disabled">—</Typography>
+                          )}
+                        </TableCell>
+                      </TableRow>
+
+                      {periodOutputs.map(output => {
+                        const prevOut = getSnapshotAtOrBefore(output.weeklySnapshots, prevEndStr);
+                        const thisOutSnap = getSnapshotInPeriod(output.weeklySnapshots, currStartStr, currEndStr);
+                        const thisOut = thisOutSnap ?? (output.completeness ? parseInt(output.completeness) : undefined);
+                        const otMeta = outputTypes.find(t => t.id === output.outputTypeId);
+                        return (
+                          <TableRow key={output.id} sx={{ bgcolor: 'action.hover' }}>
+                            <TableCell sx={{ pl: 4 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                                <Typography variant="caption">↳ {output.name}</Typography>
+                                {otMeta && (
+                                  <Chip label={otMeta.name} size="small"
+                                    color={otMeta.isTangible ? 'primary' : 'secondary'} variant="outlined"
+                                    sx={{ height: 16, fontSize: '0.65rem' }} />
+                                )}
+                                {output.effectiveDate && (
+                                  <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.6rem' }}>
+                                    [{output.effectiveDate}]
+                                  </Typography>
+                                )}
+                              </Box>
+                            </TableCell>
+                            <TableCell />
+                            <TableCell>
+                              {prevOut !== undefined
+                                ? <Typography variant="body2">{prevOut}%</Typography>
+                                : <Typography variant="caption" color="text.disabled">—</Typography>}
+                            </TableCell>
+                            <TableCell>
+                              {renderCompleteness(thisOut, thisOutSnap === undefined && thisOut !== undefined)}
+                            </TableCell>
+                            <TableCell />
+                            <TableCell />
+                          </TableRow>
+                        );
+                      })}
+                    </React.Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+      )}
 
       {/* ENH-010：期間工作成果彙總 — 雙月盤點 / 半年報 */}
       {periodSummary && (
@@ -1063,6 +1281,52 @@ const WeeklyReportPage: React.FC = () => {
           </Box>
         </Paper>
       )}
+      {/* 完成度趨勢 Dialog */}
+      <Dialog open={!!chartTarget} onClose={() => setChartTarget(null)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 0.5 }}>
+          <Box>
+            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <ShowChart /> 完成度趨勢
+            </Typography>
+            <Typography variant="body2" color="text.secondary">{chartTarget?.title}</Typography>
+          </Box>
+          <IconButton onClick={() => setChartTarget(null)}><Close /></IconButton>
+        </DialogTitle>
+        <DialogContent>
+          {chartData.length === 0 ? (
+            <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
+              此任務尚無完成度快照資料
+            </Typography>
+          ) : (
+            <ResponsiveContainer width="100%" height={340}>
+              <LineChart data={chartData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.2)" />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} unit="%" />
+                <ChartTooltip formatter={(v: number | undefined) => v !== undefined ? `${v}%` : ''} />
+                <Legend iconType="circle" iconSize={9} wrapperStyle={{ fontSize: 12 }} />
+                {(chartTarget?.taskSnapshots.length ?? 0) > 0 && (
+                  <Line
+                    type="monotone" dataKey="task" name="任務整體"
+                    stroke={CHART_COLORS[0]} strokeWidth={2.5} dot={{ r: 4 }} connectNulls
+                  />
+                )}
+                {chartTarget?.outputLines
+                  .filter(o => o.snapshots.length > 0)
+                  .map((o, idx) => (
+                    <Line
+                      key={o.name} type="monotone" dataKey={o.name} name={o.name}
+                      stroke={CHART_COLORS[(idx + 1) % CHART_COLORS.length]}
+                      strokeWidth={1.8}
+                      strokeDasharray={idx % 2 !== 0 ? '5 3' : undefined}
+                      dot={{ r: 3 }} connectNulls
+                    />
+                  ))}
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };
