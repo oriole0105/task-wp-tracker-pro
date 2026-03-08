@@ -69,6 +69,7 @@ export interface Task {
   showInWbs: boolean;
   showInGantt: boolean;
   showInReport?: boolean; // 顯示於週報進度表，預設 true；固定會議等可設為 false
+  trackCompleteness?: boolean; // 預設 true；週期型/持續型任務設 false，不追蹤完成度 %
   archived?: boolean;
   archivedAt?: number;
 }

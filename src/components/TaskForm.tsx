@@ -3,11 +3,11 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, FormControl, InputLabel, Select, MenuItem,
   Grid, Box, Typography, IconButton, Paper, Divider, Chip,
-  FormControlLabel, Checkbox, Collapse
+  FormControlLabel, Checkbox, Collapse, Tooltip
 } from '@mui/material';
-import { Add, Delete, Link as LinkIcon, Label as LabelIcon, AccountTree, InfoOutlined, ExpandMore, ExpandLess } from '@mui/icons-material';
+import { Add, Delete, ContentCopy, Link as LinkIcon, Label as LabelIcon, AccountTree, InfoOutlined, ExpandMore, ExpandLess } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { format, startOfWeek } from 'date-fns';
+import { format, startOfWeek, addDays, parseISO } from 'date-fns';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { v4 as uuidv4 } from 'uuid';
 import type { Task, TaskStatus, WorkOutput, WeeklySnapshot } from '../types';
@@ -44,6 +44,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
   const [newLabel, setNewLabel] = useState('');
   const [pauseReason, setPauseReason] = useState('');
   const [pauseReasonError, setPauseReasonError] = useState(false);
+  const [trackCompleteness, setTrackCompleteness] = useState(true);
   const [currentParentId, setCurrentParentId] = useState<string>('');
 
   // --- Snapshot management state ---
@@ -112,6 +113,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setStatus(initialData.status);
       setCompleteness(initialData.completeness !== undefined ? initialData.completeness : '');
       setPauseReason(initialData.pauseReason || '');
+      setTrackCompleteness(initialData.trackCompleteness !== false);
       setShowInWbs(initialData.showInWbs !== undefined ? initialData.showInWbs : true);
       setShowInGantt(initialData.showInGantt !== undefined ? initialData.showInGantt : true);
       setShowInReport(initialData.showInReport !== false);
@@ -129,6 +131,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setStatus('TODO');
       setCompleteness('');
       setPauseReason('');
+      setTrackCompleteness(true);
       setShowInWbs(true);
       setShowInGantt(true);
       setShowInReport(true);
@@ -147,6 +150,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setStatus('TODO');
       setCompleteness('');
       setPauseReason('');
+      setTrackCompleteness(true);
       setShowInWbs(true);
       setShowInGantt(true);
       setShowInReport(true);
@@ -203,6 +207,27 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
 
   const handleDeleteOutput = (id: string) => {
     setOutputs(outputs.filter(o => o.id !== id));
+  };
+
+  // 複製產出為下期：effectiveDate +7 天；若原本無日期則維持空白；完成度歸零
+  const handleCopyOutput = (id: string) => {
+    const src = outputs.find(o => o.id === id);
+    if (!src) return;
+    const nextEffectiveDate = src.effectiveDate
+      ? format(addDays(parseISO(src.effectiveDate), 7), 'yyyy-MM-dd')
+      : '';
+    const copy: typeof src = {
+      ...src,
+      id: uuidv4(),
+      completeness: '',
+      effectiveDate: nextEffectiveDate,
+      weeklySnapshots: [],
+    };
+    // 插入在原產出之後
+    const idx = outputs.findIndex(o => o.id === id);
+    const next = [...outputs];
+    next.splice(idx + 1, 0, copy);
+    setOutputs(next);
   };
 
   // 產出快照（local state）
@@ -273,6 +298,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       showInWbs,
       showInGantt,
       showInReport,
+      trackCompleteness,
       outputs,
       labels,
       parentId: currentParentId || undefined,
@@ -464,21 +490,27 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
             <TextField label="任務指派人" fullWidth value={reporter} onChange={(e) => setReporter(e.target.value)} />
           </Grid>
 
-          <Grid size={{ xs: 12, md: 6 }}>
-            <TextField
-              label="整體完成度 (%)"
-              fullWidth
-              type="number"
-              placeholder="0–100"
-              inputProps={{ min: 0, max: 100, step: 5 }}
-              value={completeness}
-              onChange={(e) => {
-                const val = e.target.value === '' ? '' : Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
-                setCompleteness(val);
-              }}
+          {trackCompleteness && (
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                label="整體完成度 (%)"
+                fullWidth
+                type="number"
+                placeholder="0–100"
+                inputProps={{ min: 0, max: 100, step: 5 }}
+                value={completeness}
+                onChange={(e) => {
+                  const val = e.target.value === '' ? '' : Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
+                  setCompleteness(val);
+                }}
+              />
+            </Grid>
+          )}
+          <Grid size={{ xs: 12, md: trackCompleteness ? 6 : 12 }} sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+            <FormControlLabel
+              control={<Checkbox checked={trackCompleteness} onChange={(e) => setTrackCompleteness(e.target.checked)} />}
+              label="追蹤完成度 %"
             />
-          </Grid>
-          <Grid size={{ xs: 12, md: 6 }} sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
             <FormControlLabel
               control={<Checkbox checked={showInWbs} onChange={(e) => setShowInWbs(e.target.checked)} />}
               label="顯示於 WBS"
@@ -493,8 +525,8 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
             />
           </Grid>
 
-          {/* 任務完成度歷史快照（僅編輯模式） */}
-          {initialData && (
+          {/* 任務完成度歷史快照（僅編輯模式，且追蹤完成度時顯示） */}
+          {initialData && trackCompleteness && (
             <Grid size={{ xs: 12 }}>
               <Box
                 onClick={() => setShowTaskSnapshots(v => !v)}
@@ -634,8 +666,8 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
                     return (
                     <Paper key={output.id} variant="outlined" sx={{ p: 2, bgcolor: 'action.hover' }}>
                         <Grid container spacing={2} alignItems="flex-start">
-                            {/* Row 1：名稱 + 類型 + 完成度 + 刪除 */}
-                            <Grid size={{ xs: 12, md: 5 }}>
+                            {/* Row 1：名稱 + 類型 + 完成度 + 操作按鈕 */}
+                            <Grid size={{ xs: 12, md: 4 }}>
                                 <TextField
                                     label="產出名稱"
                                     size="small"
@@ -665,7 +697,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
                                     </Select>
                                 </FormControl>
                             </Grid>
-                            <Grid size={{ xs: 10, md: 2 }}>
+                            <Grid size={{ xs: 8, md: 2 }}>
                                 <TextField
                                     label="完成度 (%)"
                                     size="small"
@@ -680,8 +712,13 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
                                     }}
                                 />
                             </Grid>
-                            <Grid size={{ xs: 2, md: 1 }} sx={{ display: 'flex', alignItems: 'center' }}>
-                                <IconButton color="error" onClick={() => handleDeleteOutput(output.id)}>
+                            <Grid size={{ xs: 4, md: 2 }} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Tooltip title={output.effectiveDate ? `複製為下期（${format(addDays(parseISO(output.effectiveDate), 7), 'MM/dd')} 起）` : '複製為下期產出'}>
+                                    <IconButton size="small" color="primary" onClick={() => handleCopyOutput(output.id)}>
+                                        <ContentCopy fontSize="small" />
+                                    </IconButton>
+                                </Tooltip>
+                                <IconButton size="small" color="error" onClick={() => handleDeleteOutput(output.id)}>
                                     <Delete />
                                 </IconButton>
                             </Grid>

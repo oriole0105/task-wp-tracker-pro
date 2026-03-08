@@ -4,6 +4,48 @@
 
 ---
 
+## [Unreleased] — 2026-03-08 (k)
+
+### 新功能 (Features)
+
+- **ENH-011：WorkOutput 快速複製下期（方向 A — TaskForm）**
+  - 每筆工作產出的操作列新增「複製為下期」圖示按鈕（📋）
+  - 點擊後自動 clone 產出，`effectiveDate` +7 天，完成度歸零，weeklySnapshots 清空
+  - 新產出插入原產出正下方，方便連續填寫多期
+  - 若原產出有 `effectiveDate`，Tooltip 顯示「複製為下期（MM/DD 起）」；無日期則顯示通用提示
+
+- **ENH-011：WorkOutput 快速新增本期產出（方向 B — 週報進度表）**
+  - 有進展/無進展兩張表的**每個任務列**名稱欄右側加入綠色「⊕」按鈕
+  - Tooltip 顯示「新增本期產出（MM/DD）」（進度表所用 progressPeriod 的起始日）
+  - 點擊開啟小 Dialog，含三個欄位：產出名稱（必填）、產出類型（Select）、完成度（%）
+  - 按「新增產出」後直接寫入 store，`effectiveDate` 自動帶入 progressPeriod 起始日
+  - 新增後進度表即時反映新產出子列
+
+- **時間分類預設值更新**
+  - 改為：固定會議、臨時會議、議題討論、思考規劃、閱讀學習、文件撰寫、程式開發、程式碼審查、Debug/問題排查
+
+---
+
+## [Unreleased] — 2026-03-07 (j)
+
+### 新功能 (Features)
+
+- **`trackCompleteness` 旗標：無完成度追蹤需求的任務**
+  - `Task` 型別新增 `trackCompleteness?: boolean`（預設 `true`）
+  - **TaskForm**：新增「追蹤完成度 %」核取方塊（預設勾選）
+    - 取消勾選後：整體完成度 % 輸入欄隱藏，「完成度歷史快照」區塊（含 Inline 折線圖）一併隱藏
+  - **Store**：`updateTask` 在 `trackCompleteness === false` 時跳過自動建立 WeeklySnapshot
+  - **週報進度表**：`trackCompleteness === false` 的任務前期%/本期%欄顯示「—」、ΔSprint 及 SPI 欄留空、不顯示趨勢圖按鈕
+
+- **「無進展」判斷邏輯強化**
+  - 新增 `hasActivity(task)` 活動偵測：任意 timeslot 與 progressPeriod 有時間交集，或任意週期型產出（有 effectiveDate）落於本期 → 視為有活動
+  - **`trackCompleteness === false` 任務**：僅以 `hasActivity` 判斷有無進展（不參考完成度 delta）
+  - **一般任務**：完成度 delta ≠ 0 **或** `hasActivity` 任一成立 → 歸入有進展表
+  - **DONE 任務**：一律歸入有進展表（不論完成度）
+  - PAUSED 仍強制歸入無進展表
+
+---
+
 ## [Unreleased] — 2026-03-07 (i)
 
 ### 新功能 (Features)

@@ -163,12 +163,15 @@
 ---
 
 ### ENH-011 — WorkOutput effectiveDate 批次快速建立
-- **狀態**：💡 建議
+- **狀態**：✅ 已解決（2026-03-08）
 - **優先度**：低
 - **描述**：週期型任務（如每週固定會議）需為每一期建立一筆 WorkOutput 並設定 `effectiveDate`，目前只能在 TaskForm 內逐一新增，操作繁瑣。建議提供批次建立入口：
   - 「為本期新增一筆產出」快速按鈕（自動預填 `effectiveDate` 為 reportPeriod 的起始日）
   - 或在 TaskForm 的工作產出區塊顯示「複製上週」按鈕，自動 clone 並更新 effectiveDate
-- **影響範圍**：`TaskForm.tsx`（輸出列操作）或 `WeeklyReportPage.tsx`（進度表行內操作）
+- **實作**：
+  - **方向 A（TaskForm）**：每筆 WorkOutput 新增「複製為下期」圖示按鈕（📋）；自動 clone 並將 effectiveDate +7 天，完成度歸零，插入於原產出之後；Tooltip 顯示下期日期。
+  - **方向 B（週報進度表）**：有進展/無進展兩張表的任務列各加綠色「⊕」按鈕；點擊開啟小 Dialog，填寫產出名稱、類型、完成度後按「新增產出」；effectiveDate 自動設為 progressPeriod 起始日。
+- **影響範圍**：`TaskForm.tsx`、`WeeklyReportPage.tsx`
 
 ---
 
@@ -187,8 +190,8 @@
 | 類別 | 數量 |
 |---|---|
 | ✅ 已解決 BUG | 7 |
-| ✅ 已解決功能 | 4 |
+| ✅ 已解決功能 | 5 |
 | 📋 待處理功能 | 1 |
-| 💡 建議功能 | 4 |
+| 💡 建議功能 | 3 |
 | 📋 技術債 | 1 |
 | **合計** | **17** |

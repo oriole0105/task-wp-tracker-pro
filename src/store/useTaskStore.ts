@@ -94,7 +94,7 @@ export const useTaskStore = create<TaskState>()(
       tasks: [],
       timeslots: [],
       mainCategories: ['Development', 'Meeting', 'General'],
-      subCategories: ['Frontend', 'Backend', 'Research', 'Planning', 'Urgent'],
+      subCategories: ['固定會議', '臨時會議', '議題討論', '思考規劃', '閱讀學習', '文件撰寫', '程式開發', '程式碼審查', 'Debug/問題排查'],
       outputTypes: DEFAULT_OUTPUT_TYPES,
       holidays: [],
       _history: [],
@@ -109,6 +109,7 @@ export const useTaskStore = create<TaskState>()(
           showInWbs: taskData.showInWbs ?? true,
           showInGantt: taskData.showInGantt ?? true,
           showInReport: taskData.showInReport ?? true,
+          trackCompleteness: taskData.trackCompleteness ?? true,
         };
         set((state) => ({
           _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
@@ -122,7 +123,8 @@ export const useTaskStore = create<TaskState>()(
           tasks: state.tasks.map((t) => {
             if (t.id !== id) return t;
             const updated = { ...t, ...updates };
-            if (updates.completeness !== undefined) {
+            // 僅在 trackCompleteness !== false 時自動建立快照
+            if (updates.completeness !== undefined && t.trackCompleteness !== false) {
               updated.weeklySnapshots = upsertSnapshot(t.weeklySnapshots, getCurrentWeekStart(), updates.completeness);
             }
             return updated;

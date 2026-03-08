@@ -5,17 +5,19 @@ import {
   ToggleButton, ToggleButtonGroup,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Chip, IconButton, Tooltip,
-  Dialog, DialogTitle, DialogContent,
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  FormControl, InputLabel, Select, MenuItem,
 } from '@mui/material';
-import { ContentCopy, Assessment, Image as ImageIcon, Code, FilterList, AccountTree, Timeline, Layers, ViewWeek, Inventory2, ChevronLeft, ChevronRight, TrendingUp, Summarize, ShowChart, Close } from '@mui/icons-material';
+import { ContentCopy, Assessment, Image as ImageIcon, Code, FilterList, AccountTree, Timeline, Layers, ViewWeek, Inventory2, ChevronLeft, ChevronRight, TrendingUp, Summarize, ShowChart, Close, AddCircleOutline } from '@mui/icons-material';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useTaskStore } from '../store/useTaskStore';
 import { startOfDay, endOfDay, addDays, addMonths, subMonths, subDays, subWeeks, addWeeks, startOfWeek, format, isValid } from 'date-fns';
 import plantumlEncoder from 'plantuml-encoder';
+import { v4 as uuidv4 } from 'uuid';
 import type { Task, TaskStatus, WeeklySnapshot, WorkOutput } from '../types';
 
 const WeeklyReportPage: React.FC = () => {
-  const { tasks, timeslots, mainCategories, holidays, outputTypes } = useTaskStore();
+  const { tasks, timeslots, mainCategories, holidays, outputTypes, updateTask } = useTaskStore();
 
   // --- Report Type & Period Navigation ---
   const [reportType, setReportType] = useState<'weekly' | 'bimonthly' | 'semiannual'>('weekly');
@@ -562,11 +564,29 @@ const WeeklyReportPage: React.FC = () => {
     : `甘特圖（${format(ganttRange.start, 'MM/dd')}～${format(ganttRange.end, 'MM/dd')}）`;
 
   // --- Progress Table Split ---
-  // 依「本期完成度是否有變動 + 是否暫停」將任務分為有進展 / 無進展兩組
+  // 依「本期完成度是否有變動 + 是否暫停 + 是否有 timeslot/產出活動」將任務分為有進展 / 無進展兩組
   const progressSplit = useMemo(() => {
     const prevEndStr = format(prevPeriod.end, 'yyyy-MM-dd');
     const currStartStr = format(progressPeriod.start, 'yyyy-MM-dd');
     const currEndStr = format(progressPeriod.end, 'yyyy-MM-dd');
+    const periodStartMs = progressPeriod.start.getTime();
+    const periodEndMs = progressPeriod.end.getTime();
+
+    // 判斷任務是否在本期有活動（timeslot 或週期型產出）
+    const hasActivity = (task: Task): boolean => {
+      // (a) 任何 timeslot 的時間範圍與 progressPeriod 有交集
+      const hasTimeslot = timeslots.some(ts =>
+        ts.taskId === task.id &&
+        ts.startTime < periodEndMs &&
+        (ts.endTime ?? Date.now()) > periodStartMs
+      );
+      if (hasTimeslot) return true;
+      // (b) 任何週期型產出（有 effectiveDate）的歸屬日在 progressPeriod 內
+      const hasOutput = task.outputs.some(o =>
+        o.effectiveDate && o.effectiveDate >= currStartStr && o.effectiveDate <= currEndStr
+      );
+      return hasOutput;
+    };
 
     const filtered = progressTasks.filter(
       t => !t.archived && t.showInReport !== false && !excludedMainCats.includes(t.mainCategory || '其他')
@@ -576,16 +596,31 @@ const WeeklyReportPage: React.FC = () => {
     const withoutProgress: Task[] = [];
 
     filtered.forEach(task => {
-      // PAUSED 任務強制歸到無進展表
+      // PAUSED 任務強制歸到無進展表（無論 trackCompleteness）
       if (task.status === 'PAUSED') {
         withoutProgress.push(task);
         return;
       }
+      // DONE 任務一律算有進展
+      if (task.status === 'DONE') {
+        withProgress.push(task);
+        return;
+      }
+      // trackCompleteness === false：僅依 timeslot/產出活動判斷
+      if (task.trackCompleteness === false) {
+        if (hasActivity(task)) {
+          withProgress.push(task);
+        } else {
+          withoutProgress.push(task);
+        }
+        return;
+      }
+      // 一般任務：完成度有變動 OR 有 timeslot/產出活動 → 有進展
       const prevSnap = getSnapshotAtOrBefore(task.weeklySnapshots, prevEndStr);
       const currSnap = getSnapshotInPeriod(task.weeklySnapshots, currStartStr, currEndStr);
       const curr = currSnap ?? task.completeness;
       const delta = prevSnap !== undefined && curr !== undefined ? curr - prevSnap : undefined;
-      if (delta !== undefined && delta !== 0) {
+      if ((delta !== undefined && delta !== 0) || hasActivity(task)) {
         withProgress.push(task);
       } else {
         withoutProgress.push(task);
@@ -593,7 +628,31 @@ const WeeklyReportPage: React.FC = () => {
     });
 
     return { withProgress, withoutProgress, prevEndStr, currStartStr, currEndStr };
-  }, [progressTasks, excludedMainCats, prevPeriod, progressPeriod]);
+  }, [progressTasks, timeslots, excludedMainCats, prevPeriod, progressPeriod]);
+
+  // --- Quick Add Output (方向 B) ---
+  const [quickOutputTask, setQuickOutputTask] = useState<Task | null>(null);
+  const [quickOutputName, setQuickOutputName] = useState('');
+  const [quickOutputTypeId, setQuickOutputTypeId] = useState('');
+  const [quickOutputCompleteness, setQuickOutputCompleteness] = useState<number | ''>('');
+
+  const handleSaveQuickOutput = () => {
+    if (!quickOutputTask || !quickOutputName.trim()) return;
+    const newOutput: WorkOutput = {
+      id: uuidv4(),
+      name: quickOutputName.trim(),
+      outputTypeId: quickOutputTypeId || undefined,
+      completeness: quickOutputCompleteness === '' ? '' : String(quickOutputCompleteness),
+      effectiveDate: format(progressPeriod.start, 'yyyy-MM-dd'),
+      summary: '',
+      link: '',
+    };
+    updateTask(quickOutputTask.id, { outputs: [...quickOutputTask.outputs, newOutput] });
+    setQuickOutputTask(null);
+    setQuickOutputName('');
+    setQuickOutputTypeId('');
+    setQuickOutputCompleteness('');
+  };
 
   // --- Completeness Trend Chart ---
   const CHART_COLORS = ['#1976d2', '#e91e63', '#4caf50', '#ff9800', '#9c27b0', '#00bcd4', '#795548'];
@@ -870,11 +929,12 @@ const WeeklyReportPage: React.FC = () => {
                 }
 
                 return withProgress.map(task => {
-                  const prevTask = getSnapshotAtOrBefore(task.weeklySnapshots, prevEndStr);
-                  const thisTaskSnap = getSnapshotInPeriod(task.weeklySnapshots, currStartStr, currEndStr);
-                  const thisTask = thisTaskSnap ?? task.completeness;
+                  const noTrack = task.trackCompleteness === false;
+                  const prevTask = noTrack ? undefined : getSnapshotAtOrBefore(task.weeklySnapshots, prevEndStr);
+                  const thisTaskSnap = noTrack ? undefined : getSnapshotInPeriod(task.weeklySnapshots, currStartStr, currEndStr);
+                  const thisTask = noTrack ? undefined : (thisTaskSnap ?? task.completeness);
                   const taskDelta = prevTask !== undefined && thisTask !== undefined ? thisTask - prevTask : undefined;
-                  const spiData = calcSPI(task);
+                  const spiData = noTrack ? null : calcSPI(task);
 
                   const statusColors: Record<TaskStatus, 'default' | 'primary' | 'warning' | 'success' | 'error' | 'secondary'> = {
                     BACKLOG: 'default', TODO: 'primary', IN_PROGRESS: 'primary',
@@ -889,6 +949,9 @@ const WeeklyReportPage: React.FC = () => {
                     !o.effectiveDate || (o.effectiveDate >= currStartStr && o.effectiveDate <= currEndStr)
                   );
 
+                  const hasChartData = !noTrack && ((task.weeklySnapshots?.length ?? 0) > 0 ||
+                    task.outputs.some(o => (o.weeklySnapshots?.length ?? 0) > 0));
+
                   return (
                     <React.Fragment key={task.id}>
                       <TableRow sx={{ '& td': { borderTop: '2px solid', borderTopColor: 'divider' } }}>
@@ -900,23 +963,34 @@ const WeeklyReportPage: React.FC = () => {
                                 <Typography variant="caption" color="text.secondary">{task.mainCategory}</Typography>
                               )}
                             </Box>
-                            {((task.weeklySnapshots?.length ?? 0) > 0 ||
-                              task.outputs.some(o => (o.weeklySnapshots?.length ?? 0) > 0)) && (
-                              <Tooltip title="查看完成度趨勢">
-                                <IconButton
-                                  size="small"
-                                  onClick={() => setChartTarget({
-                                    title: task.title,
-                                    taskSnapshots: task.weeklySnapshots ?? [],
-                                    outputLines: task.outputs
-                                      .filter(o => (o.weeklySnapshots?.length ?? 0) > 0)
-                                      .map(o => ({ name: o.name || '未命名產出', snapshots: o.weeklySnapshots ?? [] })),
-                                  })}
-                                >
-                                  <ShowChart fontSize="small" />
+                            <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
+                              <Tooltip title={`新增本期產出（${format(progressPeriod.start, 'MM/dd')}）`}>
+                                <IconButton size="small" color="success" onClick={() => {
+                                  setQuickOutputTask(task);
+                                  setQuickOutputName('');
+                                  setQuickOutputTypeId('');
+                                  setQuickOutputCompleteness('');
+                                }}>
+                                  <AddCircleOutline fontSize="small" />
                                 </IconButton>
                               </Tooltip>
-                            )}
+                              {hasChartData && (
+                                <Tooltip title="查看完成度趨勢">
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => setChartTarget({
+                                      title: task.title,
+                                      taskSnapshots: task.weeklySnapshots ?? [],
+                                      outputLines: task.outputs
+                                        .filter(o => (o.weeklySnapshots?.length ?? 0) > 0)
+                                        .map(o => ({ name: o.name || '未命名產出', snapshots: o.weeklySnapshots ?? [] })),
+                                    })}
+                                  >
+                                    <ShowChart fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                            </Box>
                           </Box>
                         </TableCell>
                         <TableCell>
@@ -925,15 +999,19 @@ const WeeklyReportPage: React.FC = () => {
                             : <Typography variant="caption" color="text.disabled">—</Typography>}
                         </TableCell>
                         <TableCell>
-                          {prevTask !== undefined
-                            ? <Typography variant="body2">{prevTask}%</Typography>
-                            : <Typography variant="caption" color="text.disabled">—</Typography>}
+                          {noTrack
+                            ? <Typography variant="caption" color="text.disabled">—</Typography>
+                            : prevTask !== undefined
+                              ? <Typography variant="body2">{prevTask}%</Typography>
+                              : <Typography variant="caption" color="text.disabled">—</Typography>}
                         </TableCell>
                         <TableCell>
-                          {renderCompleteness(thisTask, thisTaskSnap === undefined && thisTask !== undefined)}
+                          {noTrack
+                            ? <Typography variant="caption" color="text.disabled">—</Typography>
+                            : renderCompleteness(thisTask, thisTaskSnap === undefined && thisTask !== undefined)}
                         </TableCell>
-                        <TableCell>{renderDeltaChip(taskDelta)}</TableCell>
-                        <TableCell>{renderSPI(spiData)}</TableCell>
+                        <TableCell>{noTrack ? null : renderDeltaChip(taskDelta)}</TableCell>
+                        <TableCell>{spiData ? renderSPI(spiData) : null}</TableCell>
                         <TableCell>
                           <Chip
                             label={statusLabels[task.status]}
@@ -1020,9 +1098,10 @@ const WeeklyReportPage: React.FC = () => {
               <TableBody>
                 {progressSplit.withoutProgress.map(task => {
                   const { prevEndStr, currStartStr, currEndStr } = progressSplit;
-                  const prevTask = getSnapshotAtOrBefore(task.weeklySnapshots, prevEndStr);
-                  const thisTaskSnap = getSnapshotInPeriod(task.weeklySnapshots, currStartStr, currEndStr);
-                  const thisTask = thisTaskSnap ?? task.completeness;
+                  const noTrack = task.trackCompleteness === false;
+                  const prevTask = noTrack ? undefined : getSnapshotAtOrBefore(task.weeklySnapshots, prevEndStr);
+                  const thisTaskSnap = noTrack ? undefined : getSnapshotInPeriod(task.weeklySnapshots, currStartStr, currEndStr);
+                  const thisTask = noTrack ? undefined : (thisTaskSnap ?? task.completeness);
 
                   const statusColors: Record<TaskStatus, 'default' | 'primary' | 'warning' | 'success' | 'error' | 'secondary'> = {
                     BACKLOG: 'default', TODO: 'primary', IN_PROGRESS: 'primary',
@@ -1037,6 +1116,9 @@ const WeeklyReportPage: React.FC = () => {
                     !o.effectiveDate || (o.effectiveDate >= currStartStr && o.effectiveDate <= currEndStr)
                   );
 
+                  const hasChartData = !noTrack && ((task.weeklySnapshots?.length ?? 0) > 0 ||
+                    task.outputs.some(o => (o.weeklySnapshots?.length ?? 0) > 0));
+
                   return (
                     <React.Fragment key={task.id}>
                       <TableRow sx={{ '& td': { borderTop: '2px solid', borderTopColor: 'divider' } }}>
@@ -1048,20 +1130,31 @@ const WeeklyReportPage: React.FC = () => {
                                 <Typography variant="caption" color="text.secondary">{task.mainCategory}</Typography>
                               )}
                             </Box>
-                            {((task.weeklySnapshots?.length ?? 0) > 0 ||
-                              task.outputs.some(o => (o.weeklySnapshots?.length ?? 0) > 0)) && (
-                              <Tooltip title="查看完成度趨勢">
-                                <IconButton size="small" onClick={() => setChartTarget({
-                                  title: task.title,
-                                  taskSnapshots: task.weeklySnapshots ?? [],
-                                  outputLines: task.outputs
-                                    .filter(o => (o.weeklySnapshots?.length ?? 0) > 0)
-                                    .map(o => ({ name: o.name || '未命名產出', snapshots: o.weeklySnapshots ?? [] })),
-                                })}>
-                                  <ShowChart fontSize="small" />
+                            <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
+                              <Tooltip title={`新增本期產出（${format(progressPeriod.start, 'MM/dd')}）`}>
+                                <IconButton size="small" color="success" onClick={() => {
+                                  setQuickOutputTask(task);
+                                  setQuickOutputName('');
+                                  setQuickOutputTypeId('');
+                                  setQuickOutputCompleteness('');
+                                }}>
+                                  <AddCircleOutline fontSize="small" />
                                 </IconButton>
                               </Tooltip>
-                            )}
+                              {hasChartData && (
+                                <Tooltip title="查看完成度趨勢">
+                                  <IconButton size="small" onClick={() => setChartTarget({
+                                    title: task.title,
+                                    taskSnapshots: task.weeklySnapshots ?? [],
+                                    outputLines: task.outputs
+                                      .filter(o => (o.weeklySnapshots?.length ?? 0) > 0)
+                                      .map(o => ({ name: o.name || '未命名產出', snapshots: o.weeklySnapshots ?? [] })),
+                                  })}>
+                                    <ShowChart fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                            </Box>
                           </Box>
                         </TableCell>
                         <TableCell>
@@ -1070,12 +1163,16 @@ const WeeklyReportPage: React.FC = () => {
                             : <Typography variant="caption" color="text.disabled">—</Typography>}
                         </TableCell>
                         <TableCell>
-                          {prevTask !== undefined
-                            ? <Typography variant="body2">{prevTask}%</Typography>
-                            : <Typography variant="caption" color="text.disabled">—</Typography>}
+                          {noTrack
+                            ? <Typography variant="caption" color="text.disabled">—</Typography>
+                            : prevTask !== undefined
+                              ? <Typography variant="body2">{prevTask}%</Typography>
+                              : <Typography variant="caption" color="text.disabled">—</Typography>}
                         </TableCell>
                         <TableCell>
-                          {renderCompleteness(thisTask, thisTaskSnap === undefined && thisTask !== undefined)}
+                          {noTrack
+                            ? <Typography variant="caption" color="text.disabled">—</Typography>
+                            : renderCompleteness(thisTask, thisTaskSnap === undefined && thisTask !== undefined)}
                         </TableCell>
                         <TableCell>
                           <Chip label={statusLabels[task.status]} size="small"
@@ -1281,6 +1378,70 @@ const WeeklyReportPage: React.FC = () => {
           </Box>
         </Paper>
       )}
+      {/* 快速新增本期產出 Dialog（方向 B） */}
+      <Dialog open={!!quickOutputTask} onClose={() => setQuickOutputTask(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          新增本期產出
+          {quickOutputTask && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+              任務：{quickOutputTask.title}　歸屬期間：{format(progressPeriod.start, 'yyyy-MM-dd')}
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <TextField
+              label="產出名稱"
+              fullWidth
+              required
+              autoFocus
+              value={quickOutputName}
+              onChange={e => setQuickOutputName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && quickOutputName.trim() && handleSaveQuickOutput()}
+            />
+            <FormControl fullWidth>
+              <InputLabel>產出類型</InputLabel>
+              <Select
+                value={quickOutputTypeId}
+                label="產出類型"
+                onChange={e => setQuickOutputTypeId(e.target.value)}
+              >
+                <MenuItem value=""><em>未分類</em></MenuItem>
+                {outputTypes.map(ot => (
+                  <MenuItem key={ot.id} value={ot.id}>
+                    {ot.name}
+                    <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+                      {ot.isTangible ? '（有形）' : '（無形）'}
+                    </Typography>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              label="完成度 (%)"
+              type="number"
+              inputProps={{ min: 0, max: 100, step: 5 }}
+              value={quickOutputCompleteness}
+              onChange={e => {
+                const v = e.target.value === '' ? '' : Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
+                setQuickOutputCompleteness(v);
+              }}
+              sx={{ width: 160 }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setQuickOutputTask(null)}>取消</Button>
+          <Button
+            variant="contained"
+            disabled={!quickOutputName.trim()}
+            onClick={handleSaveQuickOutput}
+          >
+            新增產出
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* 完成度趨勢 Dialog */}
       <Dialog open={!!chartTarget} onClose={() => setChartTarget(null)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 0.5 }}>
