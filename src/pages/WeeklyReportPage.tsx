@@ -8,7 +8,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   FormControl, InputLabel, Select, MenuItem,
 } from '@mui/material';
-import { ContentCopy, Assessment, Image as ImageIcon, Code, FilterList, AccountTree, Timeline, Layers, ViewWeek, Inventory2, ChevronLeft, ChevronRight, TrendingUp, Summarize, ShowChart, Close, AddCircleOutline } from '@mui/icons-material';
+import { ContentCopy, Assessment, Image as ImageIcon, Code, FilterList, AccountTree, Timeline, Layers, ViewWeek, Inventory2, ChevronLeft, ChevronRight, TrendingUp, Summarize, ShowChart, Close, AddCircleOutline, Download } from '@mui/icons-material';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useTaskStore } from '../store/useTaskStore';
 import { startOfDay, endOfDay, addDays, addMonths, subMonths, subDays, subWeeks, addWeeks, startOfWeek, format, isValid } from 'date-fns';
@@ -228,6 +228,8 @@ const WeeklyReportPage: React.FC = () => {
   // --- Gantt Options ---
   const [showTodayMark, setShowTodayMark] = useState(true);
   const [ganttMode, setGanttMode] = useState<'weekly' | 'workReview'>('weekly');
+  const [ganttScale, setGanttScale] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [ganttZoom, setGanttZoom] = useState(1);
   const [showPlantUmlSource, setShowPlantUmlSource] = useState(false);
 
   const ganttRange = useMemo(() => {
@@ -352,7 +354,7 @@ const WeeklyReportPage: React.FC = () => {
     const lines: string[] = [];
     lines.push(`=== 進度追蹤（${periodLabels.rangeDisplay}）`);
     lines.push('');
-    lines.push('[cols="3,1.2,0.8,0.8,1,1.8,1",options="header"]');
+    lines.push('[cols="15,6,4,4,5,9,5",options="header"]');
     lines.push('|===');
     lines.push(`|任務 / 工作產出 |預期完成日 |${periodLabels.prevShort.replace('%', '')}% |${periodLabels.currShort.replace('%', '')}% |${periodLabels.deltaLabel} |時程績效 SPI |狀態`);
     lines.push('');
@@ -455,7 +457,7 @@ const WeeklyReportPage: React.FC = () => {
   // --- Gantt Generation ---
   const ganttSource = useMemo(() => {
     let source = '@startgantt\n';
-    source += `printscale daily zoom 1\n`;
+    source += `printscale ${ganttScale} zoom ${ganttZoom}\n`;
     source += `Project starts ${format(ganttRange.start, 'yyyy-MM-dd')}\n`;
     if (showTodayMark) {
       source += `${format(new Date(), 'yyyy-MM-dd')} is colored in Orange\n`;
@@ -522,7 +524,7 @@ const WeeklyReportPage: React.FC = () => {
 
     source += '@endgantt';
     return source;
-  }, [ganttActiveTasks, timeslots, ganttRange, showTodayMark, holidays]);
+  }, [ganttActiveTasks, timeslots, ganttRange, showTodayMark, holidays, ganttScale, ganttZoom]);
 
   const getPlantUMLUrl = (source: string) => {
     try { return `https://www.plantuml.com/plantuml/svg/${plantumlEncoder.encode(source)}`; } catch (e) { return ''; }
@@ -733,6 +735,261 @@ const WeeklyReportPage: React.FC = () => {
 
   const fmtHours = (ms: number) => `${(ms / 3600000).toFixed(1)}h`;
 
+  // --- AsciiDoc Export Sections ---
+  const progressWithAsciiDoc = useMemo(() => {
+    const { withProgress, prevEndStr, currStartStr, currEndStr } = progressSplit;
+    const statusLabels: Record<TaskStatus, string> = {
+      BACKLOG: '待規劃', TODO: '待執行', IN_PROGRESS: '進行中',
+      PAUSED: '暫停', DONE: '完成', CANCELLED: '取消',
+    };
+    const fmtDelta = (delta: number | undefined): string => {
+      if (delta === undefined) return '—';
+      if (delta > 0) return `↑ +${delta}%`;
+      if (delta < 0) return `↓ ${delta}%`;
+      return '→ 持平';
+    };
+    const fmtVal = (value: number | undefined, isFallback: boolean): string => {
+      if (value === undefined) return '—';
+      return `${value}%${isFallback ? ' (目前)' : ''}`;
+    };
+
+    const lines: string[] = [];
+    lines.push('== 進度追蹤（有進展）');
+    lines.push('');
+    lines.push(`_${periodLabels.rangeDisplay}_`);
+    lines.push('');
+    lines.push('[cols="15,6,4,4,5,9,5",options="header"]');
+    lines.push('|===');
+    lines.push(`|任務 / 工作產出 |預期完成日 |${periodLabels.prevShort.replace('%', '')}% |${periodLabels.currShort.replace('%', '')}% |${periodLabels.deltaLabel} |時程績效 SPI |狀態`);
+    lines.push('');
+
+    withProgress.forEach(task => {
+      const noTrack = task.trackCompleteness === false;
+      const prevTask = noTrack ? undefined : getSnapshotAtOrBefore(task.weeklySnapshots, prevEndStr);
+      const thisTaskSnap = noTrack ? undefined : getSnapshotInPeriod(task.weeklySnapshots, currStartStr, currEndStr);
+      const thisTask = noTrack ? undefined : (thisTaskSnap ?? task.completeness);
+      const taskDelta = prevTask !== undefined && thisTask !== undefined ? thisTask - prevTask : undefined;
+      const spiData = noTrack ? null : calcSPI(task);
+      const spiCell = spiData
+        ? `SPI ${spiData.spi.toFixed(2)} ${spiData.spi >= 1.0 ? '正常/超前' : spiData.spi >= 0.8 ? '落後' : '嚴重落後'} +\n計畫進度 ${spiData.planned}%`
+        : '—';
+      const endDateCell = task.estimatedEndDate ? format(task.estimatedEndDate, 'yyyy-MM-dd') : '—';
+      const titleCell = task.mainCategory ? `*${task.title}* +\n（${task.mainCategory}）` : `*${task.title}*`;
+
+      lines.push(`|${titleCell}`);
+      lines.push(`|${endDateCell}`);
+      lines.push(`|${noTrack ? '—' : prevTask !== undefined ? `${prevTask}%` : '—'}`);
+      lines.push(`|${noTrack ? '—' : fmtVal(thisTask, thisTaskSnap === undefined && thisTask !== undefined)}`);
+      lines.push(`|${noTrack ? '—' : fmtDelta(taskDelta)}`);
+      lines.push(`|${spiCell}`);
+      lines.push(`|${statusLabels[task.status]}`);
+      lines.push('');
+
+      task.outputs.filter(o =>
+        !o.effectiveDate || (o.effectiveDate >= currStartStr && o.effectiveDate <= currEndStr)
+      ).forEach(output => {
+        const prevOut = getSnapshotAtOrBefore(output.weeklySnapshots, prevEndStr);
+        const thisOutSnap = getSnapshotInPeriod(output.weeklySnapshots, currStartStr, currEndStr);
+        const thisOut = thisOutSnap ?? (output.completeness ? parseInt(output.completeness) : undefined);
+        const outDelta = prevOut !== undefined && thisOut !== undefined ? thisOut - prevOut : undefined;
+        const otMeta = outputTypes.find(t => t.id === output.outputTypeId);
+        const label = otMeta ? `${output.name} [${otMeta.name}]` : output.name;
+        lines.push(`|\u00a0\u00a0↳ ${label}`);
+        lines.push('|');
+        lines.push(`|${prevOut !== undefined ? `${prevOut}%` : '—'}`);
+        lines.push(`|${fmtVal(thisOut, thisOutSnap === undefined && thisOut !== undefined)}`);
+        lines.push(`|${fmtDelta(outDelta)}`);
+        lines.push('|');
+        lines.push('|');
+        lines.push('');
+      });
+    });
+
+    lines.push('|===');
+    return lines.join('\n');
+  }, [progressSplit, periodLabels, outputTypes]);
+
+  const progressWithoutAsciiDoc = useMemo(() => {
+    const { withoutProgress, prevEndStr, currStartStr, currEndStr } = progressSplit;
+    if (withoutProgress.length === 0) return '';
+
+    const statusLabels: Record<TaskStatus, string> = {
+      BACKLOG: '待規劃', TODO: '待執行', IN_PROGRESS: '進行中',
+      PAUSED: '暫停', DONE: '完成', CANCELLED: '取消',
+    };
+    const fmtVal = (value: number | undefined, isFallback: boolean): string => {
+      if (value === undefined) return '—';
+      return `${value}%${isFallback ? ' (目前)' : ''}`;
+    };
+
+    const lines: string[] = [];
+    lines.push('== 本期無進展任務');
+    lines.push('');
+    lines.push('_包含：暫停中任務、本期完成度與前期相同（無變動）的任務_');
+    lines.push('');
+    lines.push('[cols="15,6,4,4,6,15",options="header"]');
+    lines.push('|===');
+    lines.push(`|任務 / 工作產出 |預期完成日 |${periodLabels.prevShort.replace('%', '')}% |${periodLabels.currShort.replace('%', '')}% |狀態 |原因 / 說明`);
+    lines.push('');
+
+    withoutProgress.forEach(task => {
+      const noTrack = task.trackCompleteness === false;
+      const prevTask = noTrack ? undefined : getSnapshotAtOrBefore(task.weeklySnapshots, prevEndStr);
+      const thisTaskSnap = noTrack ? undefined : getSnapshotInPeriod(task.weeklySnapshots, currStartStr, currEndStr);
+      const thisTask = noTrack ? undefined : (thisTaskSnap ?? task.completeness);
+      const endDateCell = task.estimatedEndDate ? format(task.estimatedEndDate, 'yyyy-MM-dd') : '—';
+      const titleCell = task.mainCategory ? `*${task.title}* +\n（${task.mainCategory}）` : `*${task.title}*`;
+      const reasonCell = task.status === 'PAUSED' && task.pauseReason
+        ? task.pauseReason.replace(/\n/g, ' +\n')
+        : '—';
+
+      lines.push(`|${titleCell}`);
+      lines.push(`|${endDateCell}`);
+      lines.push(`|${noTrack ? '—' : prevTask !== undefined ? `${prevTask}%` : '—'}`);
+      lines.push(`|${noTrack ? '—' : fmtVal(thisTask, thisTaskSnap === undefined && thisTask !== undefined)}`);
+      lines.push(`|${statusLabels[task.status]}`);
+      lines.push(`|${reasonCell}`);
+      lines.push('');
+
+      task.outputs.filter(o =>
+        !o.effectiveDate || (o.effectiveDate >= currStartStr && o.effectiveDate <= currEndStr)
+      ).forEach(output => {
+        const otMeta = outputTypes.find(t => t.id === output.outputTypeId);
+        const label = otMeta ? `${output.name} [${otMeta.name}]` : output.name;
+        lines.push(`|\u00a0\u00a0↳ ${label}`);
+        lines.push('|');
+        lines.push('|');
+        lines.push('|');
+        lines.push('|');
+        lines.push('|');
+        lines.push('');
+      });
+    });
+
+    lines.push('|===');
+    return lines.join('\n');
+  }, [progressSplit, periodLabels, outputTypes]);
+
+  const periodSummaryAsciiDoc = useMemo(() => {
+    if (!periodSummary) return '';
+
+    const fmtMs = (ms: number) => `${(ms / 3600000).toFixed(1)}h`;
+    const statusLabels: Record<TaskStatus, string> = {
+      BACKLOG: '待規劃', TODO: '待執行', IN_PROGRESS: '進行中',
+      PAUSED: '暫停', DONE: '完成', CANCELLED: '取消',
+    };
+
+    const lines: string[] = [];
+    lines.push('== 期間工作成果彙總');
+    lines.push('');
+    lines.push(`_工作成果區間：${format(progressPeriod.start, 'yyyy-MM-dd')} ～ ${format(progressPeriod.end, 'yyyy-MM-dd')}_`);
+    lines.push('');
+
+    lines.push('=== 任務狀態統計');
+    lines.push('');
+    const statParts: string[] = [];
+    (['DONE', 'IN_PROGRESS', 'PAUSED', 'CANCELLED', 'TODO', 'BACKLOG'] as TaskStatus[])
+      .filter(s => periodSummary.statusCount[s] > 0)
+      .forEach(s => statParts.push(`${statusLabels[s]}：${periodSummary.statusCount[s]}`));
+    statParts.push(`合計：${periodSummary.filteredTotal}`);
+    lines.push(statParts.join('、'));
+    lines.push('');
+
+    lines.push('=== 期間實際工時彙總');
+    lines.push('');
+    if (periodSummary.hourEntries.length === 0) {
+      lines.push('此期間無工時紀錄');
+    } else {
+      lines.push('[cols="2,1,1",options="header"]');
+      lines.push('|===');
+      lines.push('|主分類 |工時 |佔比');
+      lines.push('');
+      periodSummary.hourEntries.forEach(([cat, ms]) => {
+        lines.push(`|${cat}`);
+        lines.push(`|${fmtMs(ms)}`);
+        lines.push(`|${((ms / periodSummary.totalMs) * 100).toFixed(0)}%`);
+        lines.push('');
+      });
+      lines.push('|*合計*');
+      lines.push(`|*${fmtMs(periodSummary.totalMs)}*`);
+      lines.push('|100%');
+      lines.push('');
+      lines.push('|===');
+    }
+    lines.push('');
+
+    lines.push('=== 工作產出清單');
+    lines.push('');
+    if (periodSummary.completedOutputs.length === 0) {
+      lines.push('此期間無標記 effectiveDate 的工作產出');
+    } else {
+      lines.push('[cols="2,2,1,1,1",options="header"]');
+      lines.push('|===');
+      lines.push('|任務 |工作產出 |類型 |完成度 |對應日期');
+      lines.push('');
+      periodSummary.completedOutputs.forEach(({ task, output }) => {
+        const otMeta = outputTypes.find(t => t.id === output.outputTypeId);
+        const taskCell = task.mainCategory ? `${task.title} +\n（${task.mainCategory}）` : task.title;
+        const outputCell = output.link ? `${output.name} +\n${output.link}` : output.name;
+        lines.push(`|${taskCell}`);
+        lines.push(`|${outputCell}`);
+        lines.push(`|${otMeta ? otMeta.name : '—'}`);
+        lines.push(`|${output.completeness ? `${output.completeness}%` : '—'}`);
+        lines.push(`|${output.effectiveDate ?? '—'}`);
+        lines.push('');
+      });
+      lines.push('|===');
+    }
+
+    return lines.join('\n');
+  }, [periodSummary, progressPeriod, outputTypes]);
+
+  const fullExportAsciiDoc = useMemo(() => {
+    const reportTypeName = reportType === 'weekly' ? '工作週報' : reportType === 'bimonthly' ? '雙月盤點報告' : '半年報';
+    const dateStr = format(reportAnchorDate, 'yyyy-MM-dd');
+    const parts: string[] = [
+      `= ${reportTypeName} | ${dateStr}`,
+      '',
+      '== WBS',
+      '',
+      '[plantuml]',
+      '----',
+      wbsSource,
+      '----',
+      '',
+      '== 甘特圖',
+      '',
+      '[plantuml]',
+      '----',
+      ganttSource,
+      '----',
+      '',
+      progressWithAsciiDoc,
+      '',
+    ];
+    if (progressWithoutAsciiDoc) {
+      parts.push(progressWithoutAsciiDoc, '');
+    }
+    if (periodSummaryAsciiDoc) {
+      parts.push(periodSummaryAsciiDoc, '');
+    }
+    return parts.join('\n');
+  }, [reportType, reportAnchorDate, wbsSource, ganttSource, progressWithAsciiDoc, progressWithoutAsciiDoc, periodSummaryAsciiDoc]);
+
+  const handleExportAsciiDoc = () => {
+    const suffix = reportType === 'weekly' ? 'weekly' : reportType === 'bimonthly' ? 'bimonthly' : 'semiannual';
+    const dateStr = format(reportAnchorDate, 'yyyy-MM-dd');
+    const blob = new Blob([fullExportAsciiDoc], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `report_${suffix}_${dateStr}.adoc`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <Box>
       <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -741,21 +998,34 @@ const WeeklyReportPage: React.FC = () => {
 
       {/* Info Bar */}
       <Paper sx={{ p: 2, mb: 3, bgcolor: 'action.selected' }}>
-        <Typography variant="body2" fontWeight="bold" gutterBottom>{reportTypeLabel}</Typography>
-        {reportType === 'bimonthly' ? (
-          <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-            <Typography variant="body2">
-              <b>工作成果區間：</b>{format(progressPeriod.start, 'yyyy-MM-dd')} ～ {format(progressPeriod.end, 'yyyy-MM-dd')}
-            </Typography>
-            <Typography variant="body2">
-              <b>計畫展望區間：</b>{format(ganttPeriod.start, 'yyyy-MM-dd')} ～ {format(ganttPeriod.end, 'yyyy-MM-dd')}
-            </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}>
+          <Box>
+            <Typography variant="body2" fontWeight="bold" gutterBottom>{reportTypeLabel}</Typography>
+            {reportType === 'bimonthly' ? (
+              <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                <Typography variant="body2">
+                  <b>工作成果區間：</b>{format(progressPeriod.start, 'yyyy-MM-dd')} ～ {format(progressPeriod.end, 'yyyy-MM-dd')}
+                </Typography>
+                <Typography variant="body2">
+                  <b>計畫展望區間：</b>{format(ganttPeriod.start, 'yyyy-MM-dd')} ～ {format(ganttPeriod.end, 'yyyy-MM-dd')}
+                </Typography>
+              </Box>
+            ) : (
+              <Typography variant="body2">
+                <b>統計範圍：</b>{format(ganttPeriod.start, 'yyyy-MM-dd')} ～ {format(ganttPeriod.end, 'yyyy-MM-dd')}
+              </Typography>
+            )}
           </Box>
-        ) : (
-          <Typography variant="body2">
-            <b>統計範圍：</b>{format(ganttPeriod.start, 'yyyy-MM-dd')} ～ {format(ganttPeriod.end, 'yyyy-MM-dd')}
-          </Typography>
-        )}
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<Download />}
+            onClick={handleExportAsciiDoc}
+            sx={{ flexShrink: 0 }}
+          >
+            匯出 AsciiDoc
+          </Button>
+        </Box>
       </Paper>
 
       {/* Options Panel */}
@@ -799,7 +1069,7 @@ const WeeklyReportPage: React.FC = () => {
             <ToggleButtonGroup
               value={reportType}
               exclusive
-              onChange={(_, v) => { if (v) { setReportType(v); setReportAnchorDate(new Date()); } }}
+              onChange={(_, v) => { if (v) { setReportType(v); setReportAnchorDate(new Date()); if (v === 'semiannual') { setGanttScale('weekly'); setGanttZoom(2); } else { setGanttScale('daily'); setGanttZoom(1); } } }}
               size="small"
             >
               <ToggleButton value="weekly" sx={{ gap: 0.5 }}>
@@ -842,6 +1112,32 @@ const WeeklyReportPage: React.FC = () => {
                   </Typography>
                 </Box>
               )}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                <Typography variant="body2" sx={{ minWidth: 60 }}>時間刻度：</Typography>
+                <ToggleButtonGroup
+                  value={ganttScale}
+                  exclusive
+                  onChange={(_, v) => { if (v) { setGanttScale(v); setGanttZoom(v === 'monthly' ? 4 : v === 'weekly' ? 2 : 1); } }}
+                  size="small"
+                >
+                  <ToggleButton value="daily" sx={{ gap: 0.5 }}>每日</ToggleButton>
+                  <ToggleButton value="weekly" sx={{ gap: 0.5 }}>每週</ToggleButton>
+                  <ToggleButton value="monthly" sx={{ gap: 0.5 }}>每月</ToggleButton>
+                </ToggleButtonGroup>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Typography variant="body2">縮放：</Typography>
+                  <IconButton size="small" onClick={() => setGanttZoom(z => Math.max(1, z - 1))} disabled={ganttZoom <= 1}>
+                    <Typography variant="body2" fontWeight="bold">－</Typography>
+                  </IconButton>
+                  <Typography variant="body2" sx={{ minWidth: 24, textAlign: 'center' }}>{ganttZoom}</Typography>
+                  <IconButton size="small" onClick={() => setGanttZoom(z => z + 1)}>
+                    <Typography variant="body2" fontWeight="bold">＋</Typography>
+                  </IconButton>
+                </Box>
+                {reportType === 'semiannual' && (
+                  <Typography variant="caption" color="text.secondary">（半年報建議使用每週或每月）</Typography>
+                )}
+              </Box>
               <FormControlLabel
                 control={<Switch size="small" checked={showTodayMark} onChange={(e) => setShowTodayMark(e.target.checked)} />}
                 label={<Typography variant="body2">顯示今日標記（今日欄位以橘色 highlight）</Typography>}

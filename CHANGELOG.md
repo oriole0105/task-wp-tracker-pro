@@ -4,6 +4,19 @@
 
 ---
 
+## [Unreleased] — 2026-03-11 (b)
+
+### 新功能 (Features)
+
+- **週報頁：甘特圖時間刻度與縮放設定**
+  - 新增「時間刻度」ToggleButton：每日 / 每週 / 每月（對應 PlantUML `printscale daily/weekly/monthly`）
+  - 新增「縮放」調整按鈕（＋ / －），僅允許正整數；各刻度預設值：每日=1、每週=2、每月=4
+  - 切換報告類型時自動套用建議設定（半年報 → 每週 zoom 2，其他 → 每日 zoom 1）
+  - 選擇半年報時顯示「建議使用每週或每月」提示文字
+  - 匯出 AsciiDoc 時 PlantUML 原始碼同步反映所選刻度與縮放值
+
+---
+
 ## [Unreleased] — 2026-03-11
 
 ### 新功能 (Features)
