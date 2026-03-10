@@ -6,6 +6,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, differenceInDays, addWeeks, subWeeks, addDays, subDays, isValid } from 'date-fns';
 import { AccessTime, ChevronLeft, ChevronRight, AccountTree } from '@mui/icons-material';
 import type { Task } from '../types';
+import { computeTaskWbsNumbers } from '../utils/wbs';
 
 const COLORS = ['#1976d2', '#2e7d32', '#ed6c02', '#9c27b0', '#d32f2f', '#0288d1', '#7b1fa2', '#388e3c', '#f57c00', '#455a64'];
 
@@ -19,20 +20,6 @@ const getAllDescendantIds = (rootId: string, tasks: Task[]): Set<string> => {
     tasks.filter(t => t.parentId === id).forEach(child => queue.push(child.id));
   }
   return ids;
-};
-
-// 依 tasks 陣列順序計算 WBS 編號
-const computeTaskWbsNumbers = (tasks: Task[]): Map<string, string> => {
-  const numbering = new Map<string, string>();
-  const counters = new Map<string | undefined, number>();
-  for (const task of tasks) {
-    const parentId = task.parentId;
-    const count = (counters.get(parentId) || 0) + 1;
-    counters.set(parentId, count);
-    const parentLabel = parentId ? numbering.get(parentId) : undefined;
-    numbering.set(task.id, parentLabel ? `${parentLabel}.${count}` : `${count}`);
-  }
-  return numbering;
 };
 
 const formatDuration = (totalMinutes: number) => {

@@ -3,7 +3,7 @@ import {
   Box, Paper, Typography, Button, Divider,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField,
   ToggleButtonGroup, ToggleButton, FormControl, InputLabel, Select, MenuItem, IconButton,
-  Tooltip, FormControlLabel, Switch
+  Tooltip, FormControlLabel, Switch, Autocomplete
 } from '@mui/material';
 import { Palette, Height, ChevronLeft, ChevronRight, CalendarMonth, IosShare } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers';
@@ -13,6 +13,7 @@ import { getCategoryColor } from '../utils/colors';
 import { TaskForm } from './TaskForm';
 import type { Timeslot, Task } from '../types';
 import { exportTimeslotsToICS, parseICS } from '../utils/ics';
+import { computeTaskWbsNumbers } from '../utils/wbs';
 
 interface TimeSlot extends Timeslot {
   taskTitle: string;
@@ -301,8 +302,9 @@ export const TimeTracker: React.FC = () => {
     e.target.value = '';
   };
 
-  // 非封存任務清單（供 Select 使用）
+  // 非封存任務清單 + WBS 編號
   const activeTasks = useMemo(() => tasks.filter(t => !t.archived), [tasks]);
+  const wbsNumbers = useMemo(() => computeTaskWbsNumbers(activeTasks), [activeTasks]);
 
   return (
     <Box sx={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column' }}>
@@ -567,21 +569,35 @@ export const TimeTracker: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
-            <FormControl fullWidth size="small">
-              <InputLabel>關聯任務（可選）</InputLabel>
-              <Select
-                value={editTaskId}
-                label="關聯任務（可選）"
-                onChange={(e) => setEditTaskId(e.target.value)}
-              >
-                <MenuItem value=""><em>無（未分類）</em></MenuItem>
-                {activeTasks.map(t => (
-                  <MenuItem key={t.id} value={t.id}>
-                    {t.aliasTitle ? `${t.title} (${t.aliasTitle})` : t.title}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Autocomplete
+              size="small"
+              options={activeTasks}
+              value={activeTasks.find(t => t.id === editTaskId) ?? null}
+              onChange={(_, task) => setEditTaskId(task ? task.id : '')}
+              getOptionLabel={(task) => {
+                const wbs = wbsNumbers.get(task.id);
+                return wbs ? `${wbs}  ${task.title}` : task.title;
+              }}
+              renderOption={(props, task) => {
+                const wbs = wbsNumbers.get(task.id);
+                const depth = wbs ? wbs.split('.').length - 1 : 0;
+                return (
+                  <li {...props} key={task.id}>
+                    <Box sx={{ pl: depth * 2 }}>
+                      <Typography variant="body2" component="span" color="textSecondary" sx={{ mr: 1, fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                        {wbs}
+                      </Typography>
+                      {task.title}
+                    </Box>
+                  </li>
+                );
+              }}
+              renderInput={(params) => (
+                <TextField {...params} label="關聯任務（可選）" placeholder="無（未分類）" />
+              )}
+              clearOnEscape
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+            />
             <TextField
               label="說明（此 timeslot 的備註）"
               fullWidth
@@ -610,21 +626,35 @@ export const TimeTracker: React.FC = () => {
         <DialogTitle>新增時間紀錄</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <FormControl fullWidth size="small">
-              <InputLabel>選擇任務（可選）</InputLabel>
-              <Select
-                value={quickAddTaskId}
-                label="選擇任務（可選）"
-                onChange={(e) => setQuickAddTaskId(e.target.value)}
-              >
-                <MenuItem value=""><em>無（未分類）</em></MenuItem>
-                {activeTasks.map(t => (
-                  <MenuItem key={t.id} value={t.id}>
-                    {t.aliasTitle ? `${t.title} (${t.aliasTitle})` : t.title}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Autocomplete
+              size="small"
+              options={activeTasks}
+              value={activeTasks.find(t => t.id === quickAddTaskId) ?? null}
+              onChange={(_, task) => setQuickAddTaskId(task ? task.id : '')}
+              getOptionLabel={(task) => {
+                const wbs = wbsNumbers.get(task.id);
+                return wbs ? `${wbs}  ${task.title}` : task.title;
+              }}
+              renderOption={(props, task) => {
+                const wbs = wbsNumbers.get(task.id);
+                const depth = wbs ? wbs.split('.').length - 1 : 0;
+                return (
+                  <li {...props} key={task.id}>
+                    <Box sx={{ pl: depth * 2 }}>
+                      <Typography variant="body2" component="span" color="textSecondary" sx={{ mr: 1, fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                        {wbs}
+                      </Typography>
+                      {task.title}
+                    </Box>
+                  </li>
+                );
+              }}
+              renderInput={(params) => (
+                <TextField {...params} label="選擇任務（可選）" placeholder="無（未分類）" />
+              )}
+              clearOnEscape
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+            />
             <FormControl fullWidth size="small">
               <InputLabel>時間分類（可選）</InputLabel>
               <Select

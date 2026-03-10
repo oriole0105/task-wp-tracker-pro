@@ -13,7 +13,12 @@
   - 選定任務節點後，圓餅圖與總工時自動縮小為**該節點及所有子孫任務**關連的 timeslot
   - 下拉選單顯示 WBS 編號（`1.2.3`）並依層級縮排，支援文字搜尋
   - 選定時右側顯示提示；清除後恢復全部統計
-  - 新增 `getAllDescendantIds`（BFS 廣度優先子樹收集）與 `computeTaskWbsNumbers`（依 tasks 陣列順序計算 WBS）兩個純函式
+  - 新增 `getAllDescendantIds`（BFS 廣度優先子樹收集）純函式
+
+- **Timeslot 編輯／新增：關聯任務改為 WBS Autocomplete**
+  - 「編輯時間紀錄」與「快速新增時間紀錄」的關聯任務欄位，由 Select 下拉改為 Autocomplete
+  - 顯示格式與統計頁相同：WBS 編號（等寬字型）+ 任務名稱，依層級縮排，支援文字搜尋
+  - 新增共用工具 `src/utils/wbs.ts`，內含 `computeTaskWbsNumbers`（依 tasks 陣列順序計算 WBS 編號），供 Stats 與 TimeTracker 共用
 
 ---
 
