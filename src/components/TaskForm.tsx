@@ -5,6 +5,7 @@ import {
   Grid, Box, Typography, IconButton, Paper, Divider, Chip,
   FormControlLabel, Checkbox, Collapse, Tooltip
 } from '@mui/material';
+import Autocomplete from '@mui/material/Autocomplete';
 import { Add, Delete, ContentCopy, Link as LinkIcon, Label as LabelIcon, AccountTree, InfoOutlined, ExpandMore, ExpandLess } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { format, startOfWeek, addDays, parseISO } from 'date-fns';
@@ -23,7 +24,8 @@ interface TaskFormProps {
 }
 
 export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, parentId }) => {
-  const { tasks, timeslots, mainCategories, outputTypes, addTask, updateTask, updateTaskSnapshots, getTaskById } = useTaskStore();
+  const { tasks, timeslots, mainCategories, outputTypes, members, addTask, updateTask, updateTaskSnapshots, getTaskById } = useTaskStore();
+  const memberNames = members.map(m => m.name).filter(n => n.trim() !== '');
 
   const [title, setTitle] = useState('');
   const [aliasTitle, setAliasTitle] = useState('');
@@ -125,9 +127,12 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       if (parent) {
         setMainCategory(parent.mainCategory);
       }
+      const selfName = members.find(m => m.isSelf)?.name || '';
       setTitle('');
       setAliasTitle('');
       setDescription('');
+      setAssignee(selfName);
+      setReporter('');
       setStatus('TODO');
       setCompleteness('');
       setPauseReason('');
@@ -139,13 +144,14 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setLabels([]);
       setCurrentParentId(parentId);
     } else {
+      const selfName = members.find(m => m.isSelf)?.name || '';
       setTitle('');
       setAliasTitle('');
       setDescription('');
       setMainCategory('');
       setEstimatedStartDate(null);
       setEstimatedEndDate(null);
-      setAssignee('');
+      setAssignee(selfName);
       setReporter('');
       setStatus('TODO');
       setCompleteness('');
@@ -167,7 +173,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
     setNewSnapValue('');
     setExpandedOutputSnaps(new Set());
     setNewOutputSnap({});
-  }, [initialData, parentId, open, getTaskById]);
+  }, [initialData, parentId, open, getTaskById, members]);
 
   // 實際開始日/完成日：從 timeslots 動態計算，不儲存於 Task
   const computedActualDates = useMemo(() => {
@@ -484,10 +490,22 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
           </Grid>
 
           <Grid size={{ xs: 12, md: 6 }}>
-            <TextField label="任務負責人" fullWidth value={assignee} onChange={(e) => setAssignee(e.target.value)} />
+            <Autocomplete
+              freeSolo
+              options={memberNames}
+              value={assignee}
+              onInputChange={(_, v) => setAssignee(v)}
+              renderInput={(params) => <TextField {...params} label="任務負責人" fullWidth />}
+            />
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
-            <TextField label="任務指派人" fullWidth value={reporter} onChange={(e) => setReporter(e.target.value)} />
+            <Autocomplete
+              freeSolo
+              options={memberNames}
+              value={reporter}
+              onInputChange={(_, v) => setReporter(v)}
+              renderInput={(params) => <TextField {...params} label="任務指派人" fullWidth />}
+            />
           </Grid>
 
           {trackCompleteness && (

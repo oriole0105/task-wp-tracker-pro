@@ -185,13 +185,42 @@
 
 ---
 
+### ENH-013 — 人員名單管理 + 設定備份
+- **狀態**：✅ 已解決（2026-03-10）
+- **優先度**：中
+- **描述**：
+  - Task 的 assignee/reporter 為純文字，無法從固定名單選取
+  - 缺少「只備份設定（不含任務資料）」的功能
+- **實作**：
+  - 新增 `Member` 型別，store 新增 `members` 狀態與 CRUD actions
+  - 系統設定新增「人員名單」Section：設定自己名字（預填負責人用）、管理成員 Chip 清單
+  - TaskForm 的 assignee/reporter 改為 `freeSolo` Autocomplete，新建任務自動預填自己名字
+  - 系統設定新增「設定備份與還原」：匯出/匯入 mainCategories、subCategories、outputTypes、holidays、members（不含 tasks/timeslots）
+  - 移除分類管理區的「僅匯出/匯入分類」舊按鈕
+- **影響範圍**：`types/index.ts`、`store/useTaskStore.ts`、`CategoryManager.tsx`、`TaskForm.tsx`
+
+---
+
+### ENH-014 — 排程視圖 ICS 匯入/匯出
+- **狀態**：✅ 已解決（2026-03-10）
+- **優先度**：中
+- **描述**：排程視圖缺少與外部行事曆（Google Calendar、Apple Calendar、Outlook）相容的 .ics 格式支援
+- **實作**：
+  - 新增 `src/utils/ics.ts`：`toICSDate`/`fromICSDate` 日期轉換、`timeslotToVEVENT` VEVENT 生成、`exportTimeslotsToICS` 下載觸發、`unfoldICS` Line folding 還原、`parseICS` 解析
+  - 單筆匯出：編輯時間紀錄 Dialog 新增「匯出 .ics」按鈕
+  - 批次匯出：工具列新增「批次匯出」按鈕，選起迄日期後下載含多個 VEVENT 的 .ics
+  - ICS 匯入：工具列新增「匯入 .ics」按鈕，解析後批次建立 Timeslot（不連結 Task）
+- **影響範圍**：`src/utils/ics.ts`（新增）、`src/components/TimeTracker.tsx`
+
+---
+
 ## 統計
 
 | 類別 | 數量 |
 |---|---|
 | ✅ 已解決 BUG | 7 |
-| ✅ 已解決功能 | 5 |
+| ✅ 已解決功能 | 7 |
 | 📋 待處理功能 | 1 |
 | 💡 建議功能 | 3 |
 | 📋 技術債 | 1 |
-| **合計** | **17** |
+| **合計** | **19** |

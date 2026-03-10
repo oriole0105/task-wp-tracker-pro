@@ -4,6 +4,44 @@
 
 ---
 
+## [Unreleased] — 2026-03-10 (m)
+
+### 新功能 (Features)
+
+- **排程視圖 ICS 匯入/匯出**
+  - 新增 `src/utils/ics.ts` 工具模組：`toICSDate`、`fromICSDate`、`timeslotToVEVENT`、`exportTimeslotsToICS`、`unfoldICS`、`parseICS`
+  - 支援標準 ICS 格式（RFC 5545）：UTC 時間（`Z` 結尾）、本地時間（無 `Z`）、全天格式（`YYYYMMDD`）、Line folding 還原
+  - 自訂欄位：`X-TT-SUBCATEGORY`（匯入時還原時間分類）、`X-TT-TASKID`（識別關聯任務）
+  - **單筆匯出**：編輯時間紀錄 Dialog 新增「匯出 .ics」按鈕，下載單筆 timeslot 的 `.ics` 檔案
+  - **批次匯出**：工具列新增「批次匯出」按鈕，開啟 Dialog 選擇起迄日期，預覽範圍內筆數，下載含所有 VEVENT 的 `.ics` 檔案
+  - **ICS 匯入**：工具列新增「匯入 .ics」按鈕，解析後建立 Timeslot（不自動連結 Task），支援 `X-TT-SUBCATEGORY` 還原時間分類
+
+---
+
+## [Unreleased] — 2026-03-10 (l)
+
+### 新功能 (Features)
+
+- **人員名單管理**
+  - 新增 `Member` 型別（`id`、`name`、`isSelf?`），儲存於 Zustand store 並持久化至 localStorage
+  - 系統設定新增「人員名單」Section（假日設定之後）
+    - 「我的名字」欄位：設定自己名字，新建任務時自動預填為負責人
+    - 成員清單：以 Chip 列表呈現，支援新增（Enter 或點擊按鈕）、刪除（Chip × 按鈕）
+  - Store 新增 `addMember`、`updateMember`、`deleteMember` actions（isSelf 者不可刪除）
+
+- **TaskForm 負責人/指派人改為 Autocomplete**
+  - `assignee`、`reporter` 欄位由純文字 TextField 改為 `freeSolo` Autocomplete
+  - 下拉選單顯示人員名單，仍可自由輸入非名單中的名字
+  - 新建任務（含子任務）自動預填自己名字至負責人欄位
+
+- **設定備份與還原**
+  - 系統設定頁新增「設定備份與還原」Paper（完整備份之後）
+  - 匯出設定（JSON）：包含 `mainCategories`、`subCategories`、`outputTypes`、`holidays`、`members`，不含任務與時間紀錄資料
+  - 匯入設定：驗證 JSON 含至少一個設定 key，`window.confirm` 確認後呼叫 `importSettings`（不影響 tasks/timeslots）
+  - 移除分類管理區塊的「僅匯出分類」與「僅匯入分類」兩個舊按鈕（功能已被設定備份涵蓋）
+
+---
+
 ## [Unreleased] — 2026-03-08 (k)
 
 ### 新功能 (Features)

@@ -24,6 +24,12 @@ export interface OutputType {
   isTangible: boolean;
 }
 
+export interface Member {
+  id: string;
+  name: string;
+  isSelf?: boolean;  // true = 「自己」這筆，不可刪除，只能改名
+}
+
 export interface WeeklySnapshot {
   weekStart: string;    // 'yyyy-MM-dd'（週日為起始）
   completeness: number; // 0-100

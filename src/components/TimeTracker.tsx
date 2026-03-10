@@ -1,17 +1,18 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
-  Box, Paper, Typography, Button,
+  Box, Paper, Typography, Button, Divider,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField,
   ToggleButtonGroup, ToggleButton, FormControl, InputLabel, Select, MenuItem, IconButton,
   Tooltip, FormControlLabel, Switch
 } from '@mui/material';
-import { Palette, Height, ChevronLeft, ChevronRight } from '@mui/icons-material';
+import { Palette, Height, ChevronLeft, ChevronRight, CalendarMonth, IosShare } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers';
 import { useTaskStore } from '../store/useTaskStore';
 import { format, startOfDay, endOfDay, startOfWeek, addDays, isSameDay, addWeeks, subWeeks, subDays } from 'date-fns';
 import { getCategoryColor } from '../utils/colors';
 import { TaskForm } from './TaskForm';
 import type { Timeslot, Task } from '../types';
+import { exportTimeslotsToICS, parseICS } from '../utils/ics';
 
 interface TimeSlot extends Timeslot {
   taskTitle: string;
@@ -128,6 +129,11 @@ export const TimeTracker: React.FC = () => {
   const [quickAddTaskId, setQuickAddTaskId] = useState('');
   const [quickAddSubCategory, setQuickAddSubCategory] = useState('');
   const [quickAddNote, setQuickAddNote] = useState('');
+
+  // ICS 批次匯出 Dialog
+  const [icsExportDialogOpen, setIcsExportDialogOpen] = useState(false);
+  const [icsExportStart, setIcsExportStart] = useState<Date | null>(null);
+  const [icsExportEnd, setIcsExportEnd] = useState<Date | null>(null);
 
   // 從 Quick Add 跳去建立新任務時，記錄原先任務 ID 集合以便回來後自動選新任務
   const pendingQuickAdd = useRef(false);
@@ -255,6 +261,46 @@ export const TimeTracker: React.FC = () => {
 
   const hours = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => i + START_HOUR);
 
+  // ── ICS handlers ────────────────────────────────────────────────────────────
+
+  const handleSingleIcsExport = (slot: Timeslot) => {
+    exportTimeslotsToICS([slot], tasks, 'single');
+  };
+
+  const handleBatchIcsExport = () => {
+    if (!icsExportStart || !icsExportEnd) return;
+    const start = startOfDay(icsExportStart).getTime();
+    const end = endOfDay(icsExportEnd).getTime();
+    const filtered = timeslots.filter(ts => ts.startTime >= start && ts.startTime <= end);
+    const hint = `${format(icsExportStart, 'yyyy-MM-dd')}_to_${format(icsExportEnd, 'yyyy-MM-dd')}`;
+    exportTimeslotsToICS(filtered, tasks, hint);
+    setIcsExportDialogOpen(false);
+  };
+
+  const handleIcsImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const content = ev.target?.result as string;
+      const parsed = parseICS(content);
+      if (parsed.length === 0) {
+        alert('未能解析到任何有效的時間事件，請確認檔案格式。');
+        return;
+      }
+      if (window.confirm(`共解析到 ${parsed.length} 筆時間紀錄，是否全部匯入？`)) {
+        parsed.forEach(p => addTimeslot({
+          startTime: p.startTime,
+          endTime: p.endTime,
+          subCategory: p.subCategory,
+          note: p.note,
+        }));
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   // 非封存任務清單（供 Select 使用）
   const activeTasks = useMemo(() => tasks.filter(t => !t.archived), [tasks]);
 
@@ -319,6 +365,17 @@ export const TimeTracker: React.FC = () => {
             label={<Typography variant="caption">顯示說明</Typography>}
             sx={{ ml: 1 }}
           />
+
+          <Divider orientation="vertical" flexItem />
+
+          <Button size="small" variant="outlined" startIcon={<CalendarMonth />} component="label">
+            匯入 .ics
+            <input type="file" hidden accept=".ics" onChange={handleIcsImport} />
+          </Button>
+          <Button size="small" variant="outlined" startIcon={<IosShare />}
+            onClick={() => setIcsExportDialogOpen(true)}>
+            批次匯出
+          </Button>
         </Box>
       </Box>
 
@@ -539,6 +596,10 @@ export const TimeTracker: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button color="error" onClick={handleDeleteLog}>刪除紀錄</Button>
+          <Button startIcon={<CalendarMonth />} size="small"
+            onClick={() => editingLog && handleSingleIcsExport(editingLog)}>
+            匯出 .ics
+          </Button>
           <Button onClick={() => setEditingLog(null)}>取消</Button>
           <Button variant="contained" onClick={handleSaveLog}>儲存</Button>
         </DialogActions>
@@ -622,6 +683,36 @@ export const TimeTracker: React.FC = () => {
               確認新增
             </Button>
           </Box>
+        </DialogActions>
+      </Dialog>
+
+      {/* 批次匯出 .ics Dialog */}
+      <Dialog open={icsExportDialogOpen} onClose={() => setIcsExportDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>批次匯出 .ics</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            選擇要匯出的時段，範圍內所有時間紀錄將合併為單一 .ics 檔案。
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <DatePicker label="起始日期" value={icsExportStart} onChange={setIcsExportStart} />
+            <DatePicker label="結束日期" value={icsExportEnd} onChange={setIcsExportEnd} />
+            {icsExportStart && icsExportEnd && (
+              <Typography variant="body2" color="text.secondary">
+                範圍內共 {timeslots.filter(ts =>
+                  ts.startTime >= startOfDay(icsExportStart).getTime() &&
+                  ts.startTime <= endOfDay(icsExportEnd).getTime()
+                ).length} 筆時間紀錄
+              </Typography>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setIcsExportDialogOpen(false)}>取消</Button>
+          <Button variant="contained" startIcon={<IosShare />}
+            disabled={!icsExportStart || !icsExportEnd}
+            onClick={handleBatchIcsExport}>
+            匯出
+          </Button>
         </DialogActions>
       </Dialog>
 

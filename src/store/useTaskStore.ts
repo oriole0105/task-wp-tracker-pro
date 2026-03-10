@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import { format, startOfWeek } from 'date-fns';
-import type { Task, CategoryData, WorkOutput, Timeslot, OutputType, WeeklySnapshot } from '../types';
+import type { Task, CategoryData, WorkOutput, Timeslot, OutputType, WeeklySnapshot, Member } from '../types';
 
 const getCurrentWeekStart = (): string =>
   format(startOfWeek(new Date(), { weekStartsOn: 0 }), 'yyyy-MM-dd');
@@ -26,6 +26,14 @@ interface HistorySnapshot {
   timeslots: Timeslot[];
 }
 
+type SettingsExport = {
+  mainCategories: string[];
+  subCategories: string[];
+  outputTypes: OutputType[];
+  holidays: string[];
+  members: Member[];
+};
+
 interface TaskState {
   tasks: Task[];
   timeslots: Timeslot[];
@@ -33,6 +41,7 @@ interface TaskState {
   subCategories: string[];
   outputTypes: OutputType[];
   holidays: string[]; // yyyy-MM-dd 格式的假日/休息日清單
+  members: Member[];
 
   // Undo history (not persisted)
   _history: HistorySnapshot[];
@@ -73,6 +82,12 @@ interface TaskState {
   addHoliday: (date: string) => void;
   deleteHoliday: (date: string) => void;
 
+  // Member Actions
+  addMember: (name: string) => void;
+  updateMember: (id: string, name: string) => void;
+  deleteMember: (id: string) => void;
+  importSettings: (data: Partial<SettingsExport>) => void;
+
   undo: () => void;
   toggleDarkMode: () => void;
 
@@ -97,6 +112,7 @@ export const useTaskStore = create<TaskState>()(
       subCategories: ['固定會議', '臨時會議', '議題討論', '思考規劃', '閱讀學習', '文件撰寫', '程式開發', '程式碼審查', 'Debug/問題排查'],
       outputTypes: DEFAULT_OUTPUT_TYPES,
       holidays: [],
+      members: [{ id: 'self', name: '', isSelf: true }],
       _history: [],
       darkMode: false,
 
@@ -209,6 +225,7 @@ export const useTaskStore = create<TaskState>()(
         subCategories: data.subCategories || [],
         outputTypes: data.outputTypes || DEFAULT_OUTPUT_TYPES,
         holidays: data.holidays || [],
+        members: (data as any).members || [{ id: 'self', name: '', isSelf: true }],
       }),
 
       addOutputType: (data) => set(s => ({
@@ -226,6 +243,23 @@ export const useTaskStore = create<TaskState>()(
       })),
       deleteHoliday: (date) => set(s => ({
         holidays: s.holidays.filter(d => d !== date),
+      })),
+
+      addMember: (name) => set(s => ({
+        members: [...s.members, { id: uuidv4(), name }],
+      })),
+      updateMember: (id, name) => set(s => ({
+        members: s.members.map(m => m.id === id ? { ...m, name } : m),
+      })),
+      deleteMember: (id) => set(s => ({
+        members: s.members.filter(m => m.id !== id || m.isSelf),
+      })),
+      importSettings: (data) => set((state) => ({
+        mainCategories: data.mainCategories ?? state.mainCategories,
+        subCategories: data.subCategories ?? state.subCategories,
+        outputTypes: data.outputTypes ?? state.outputTypes,
+        holidays: data.holidays ?? state.holidays,
+        members: data.members ?? state.members,
       })),
 
       reorderTask: (id, direction) => {
@@ -363,6 +397,7 @@ export const useTaskStore = create<TaskState>()(
         subCategories: state.subCategories,
         outputTypes: state.outputTypes,
         holidays: state.holidays,
+        members: state.members,
         darkMode: state.darkMode,
       }),
     }

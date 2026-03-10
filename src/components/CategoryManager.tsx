@@ -4,20 +4,20 @@ import {
   List, ListItem, ListItemText, IconButton, Alert,
   Grid, Card, CardContent, Chip, Checkbox, FormControlLabel, Divider,
 } from '@mui/material';
-import { Delete, Edit, Add, Download, Upload, Save, Cancel, Backup, Restore, BeachAccess } from '@mui/icons-material';
+import { Delete, Edit, Add, Download, Save, Cancel, Backup, Restore, BeachAccess, Tune, Person } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers';
 import { format } from 'date-fns';
 import { useTaskStore } from '../store/useTaskStore';
-import type { CategoryData } from '../types';
 
 export const CategoryManager: React.FC = () => {
   const {
-    tasks, timeslots, mainCategories, subCategories, outputTypes, holidays,
+    tasks, timeslots, mainCategories, subCategories, outputTypes, holidays, members,
     addMainCategory, updateMainCategory, deleteMainCategory,
     addSubCategory, updateSubCategory, deleteSubCategory,
     addOutputType, updateOutputType, deleteOutputType,
     addHoliday, deleteHoliday,
-    importCategories, importFullData,
+    addMember, updateMember, deleteMember,
+    importFullData, importSettings,
   } = useTaskStore();
 
   const [newMain, setNewMain] = useState('');
@@ -34,8 +34,12 @@ export const CategoryManager: React.FC = () => {
   const [newOtIsTangible, setNewOtIsTangible] = useState(true);
   const [editingOt, setEditingOt] = useState<{ id: string; name: string; isTangible: boolean } | null>(null);
 
+  // Member state
+  const [newMemberName, setNewMemberName] = useState('');
+  const [selfNameInput, setSelfNameInput] = useState<string | null>(null); // null = not editing
+
   const handleFullExport = () => {
-    const data = { tasks, timeslots, mainCategories, subCategories, outputTypes, holidays };
+    const data = { tasks, timeslots, mainCategories, subCategories, outputTypes, holidays, members };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -43,6 +47,43 @@ export const CategoryManager: React.FC = () => {
     link.download = `task_tracker_backup_${new Date().toISOString().split('T')[0]}.json`;
     link.click();
     setSuccess('全系統資料匯出成功。');
+  };
+
+  const handleSettingsExport = () => {
+    const data = { mainCategories, subCategories, outputTypes, holidays, members };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `task_tracker_settings_${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    setSuccess('設定匯出成功。');
+  };
+
+  const handleSettingsImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const parsed = JSON.parse(e.target?.result as string);
+          if (parsed.mainCategories || parsed.subCategories || parsed.members) {
+            if (window.confirm('這將覆蓋目前的分類、產出類型、假日與人員名單設定（不影響任務資料）。確定要執行嗎？')) {
+              importSettings(parsed);
+              setSuccess('設定匯入成功。');
+              setError(null);
+            }
+          } else {
+            throw new Error('無效的設定檔格式。');
+          }
+        } catch (err: any) {
+          setError(`匯入失敗: ${err.message}`);
+          setSuccess(null);
+        }
+      };
+      reader.readAsText(file);
+    }
+    event.target.value = '';
   };
 
   const handleFullImport = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,37 +111,6 @@ export const CategoryManager: React.FC = () => {
     }
   };
 
-  const handleCategoryExport = () => {
-    const data: CategoryData = { mainCategories, subCategories };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'categories.json';
-    link.click();
-  };
-
-  const handleCategoryImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const parsed = JSON.parse(e.target?.result as string);
-          if (parsed.mainCategories && parsed.subCategories) {
-            importCategories(parsed);
-            setSuccess('分類資料匯入成功。');
-            setError(null);
-          } else {
-            throw new Error('無效的 JSON 格式');
-          }
-        } catch (err) {
-          setError('匯入失敗：無效的 JSON 結構');
-        }
-      };
-      reader.readAsText(file);
-    }
-  };
 
   const startEdit = (type: 'main' | 'sub', name: string) => {
     setEditing({ type, oldName: name, newName: name });
@@ -196,16 +206,25 @@ export const CategoryManager: React.FC = () => {
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess(null)}>{success}</Alert>}
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, mt: 4 }}>
-        <Typography variant="h5">分類管理</Typography>
+      <Paper sx={{ p: 3, mb: 4, border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
+        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Tune color="primary" /> 設定備份與還原
+        </Typography>
+        <Typography variant="body2" color="textSecondary" paragraph>
+          匯出分類、工作產出類型、假日與人員名單。不含任務與時間紀錄資料。
+        </Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
-          <Button size="small" variant="text" startIcon={<Download />} onClick={handleCategoryExport}>僅匯出分類</Button>
-          <Button size="small" variant="text" component="label" startIcon={<Upload />}>
-            僅匯入分類
-            <input type="file" hidden accept=".json" onChange={handleCategoryImport} />
+          <Button variant="contained" startIcon={<Download />} onClick={handleSettingsExport} color="secondary">
+            匯出設定
+          </Button>
+          <Button variant="outlined" component="label" startIcon={<Restore />} color="secondary">
+            匯入設定
+            <input type="file" hidden accept=".json" onChange={handleSettingsImport} />
           </Button>
         </Box>
-      </Box>
+      </Paper>
+
+      <Typography variant="h5" sx={{ mb: 2, mt: 4 }}>分類管理</Typography>
 
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, md: 6 }}>
@@ -363,6 +382,99 @@ export const CategoryManager: React.FC = () => {
               ))}
             </List>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Member Management */}
+      <Typography variant="h5" sx={{ mt: 5, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Person /> 人員名單
+      </Typography>
+      <Card variant="outlined">
+        <CardContent>
+          {/* 我的名字 */}
+          <Typography variant="subtitle1" gutterBottom color="text.secondary">
+            我的名字（用於預設負責人）
+          </Typography>
+          {(() => {
+            const selfMember = members.find(m => m.isSelf);
+            const selfName = selfMember?.name || '';
+            const isEditing = selfNameInput !== null;
+            return (
+              <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'flex-start' }}>
+                <TextField
+                  size="small"
+                  placeholder="輸入你的名字..."
+                  value={isEditing ? selfNameInput : selfName}
+                  onChange={(e) => setSelfNameInput(e.target.value)}
+                  onFocus={() => setSelfNameInput(selfName)}
+                  helperText={!selfName ? '設定後，新建任務的負責人欄位將自動填入' : ''}
+                  sx={{ minWidth: 200 }}
+                />
+                {isEditing && (
+                  <>
+                    <IconButton
+                      size="small"
+                      color="success"
+                      onClick={() => {
+                        if (selfNameInput !== null) updateMember('self', selfNameInput);
+                        setSelfNameInput(null);
+                      }}
+                    >
+                      <Save fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" onClick={() => setSelfNameInput(null)}>
+                      <Cancel fontSize="small" />
+                    </IconButton>
+                  </>
+                )}
+              </Box>
+            );
+          })()}
+
+          <Divider sx={{ my: 2 }} />
+
+          {/* 成員清單 */}
+          <Typography variant="subtitle1" gutterBottom color="text.secondary">成員清單</Typography>
+          <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center' }}>
+            <TextField
+              size="small"
+              placeholder="新增成員名稱..."
+              value={newMemberName}
+              onChange={(e) => setNewMemberName(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && newMemberName.trim()) {
+                  addMember(newMemberName.trim());
+                  setNewMemberName('');
+                }
+              }}
+              sx={{ minWidth: 200 }}
+            />
+            <Button
+              variant="contained"
+              onClick={() => {
+                if (newMemberName.trim()) {
+                  addMember(newMemberName.trim());
+                  setNewMemberName('');
+                }
+              }}
+              disabled={!newMemberName.trim()}
+            >
+              <Add />
+            </Button>
+          </Box>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {members.filter(m => !m.isSelf).map(m => (
+              <Chip
+                key={m.id}
+                label={m.name}
+                onDelete={() => deleteMember(m.id)}
+                deleteIcon={<Delete />}
+              />
+            ))}
+            {members.filter(m => !m.isSelf).length === 0 && (
+              <Typography variant="body2" color="text.secondary">尚未新增任何成員</Typography>
+            )}
+          </Box>
         </CardContent>
       </Card>
 
