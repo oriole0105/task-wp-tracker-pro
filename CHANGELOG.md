@@ -4,6 +4,19 @@
 
 ---
 
+## [Unreleased] — 2026-03-11
+
+### 新功能 (Features)
+
+- **統計報表：任務節點篩選**
+  - 統計頁（`/reports`）新增「篩選任務節點」Autocomplete 選擇器
+  - 選定任務節點後，圓餅圖與總工時自動縮小為**該節點及所有子孫任務**關連的 timeslot
+  - 下拉選單顯示 WBS 編號（`1.2.3`）並依層級縮排，支援文字搜尋
+  - 選定時右側顯示提示；清除後恢復全部統計
+  - 新增 `getAllDescendantIds`（BFS 廣度優先子樹收集）與 `computeTaskWbsNumbers`（依 tasks 陣列順序計算 WBS）兩個純函式
+
+---
+
 ## [Unreleased] — 2026-03-10 (m)
 
 ### 新功能 (Features)

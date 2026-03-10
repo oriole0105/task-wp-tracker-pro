@@ -1,12 +1,39 @@
 import React, { useState, useMemo } from 'react';
-import { Box, Paper, Typography, Grid, IconButton } from '@mui/material';
+import { Box, Paper, Typography, Grid, IconButton, Autocomplete, TextField } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useTaskStore } from '../store/useTaskStore';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, differenceInDays, addWeeks, subWeeks, addDays, subDays, isValid } from 'date-fns';
-import { AccessTime, ChevronLeft, ChevronRight } from '@mui/icons-material';
+import { AccessTime, ChevronLeft, ChevronRight, AccountTree } from '@mui/icons-material';
+import type { Task } from '../types';
 
 const COLORS = ['#1976d2', '#2e7d32', '#ed6c02', '#9c27b0', '#d32f2f', '#0288d1', '#7b1fa2', '#388e3c', '#f57c00', '#455a64'];
+
+// 遞迴收集任務節點及其所有子孫 ID
+const getAllDescendantIds = (rootId: string, tasks: Task[]): Set<string> => {
+  const ids = new Set<string>();
+  const queue = [rootId];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    ids.add(id);
+    tasks.filter(t => t.parentId === id).forEach(child => queue.push(child.id));
+  }
+  return ids;
+};
+
+// 依 tasks 陣列順序計算 WBS 編號
+const computeTaskWbsNumbers = (tasks: Task[]): Map<string, string> => {
+  const numbering = new Map<string, string>();
+  const counters = new Map<string | undefined, number>();
+  for (const task of tasks) {
+    const parentId = task.parentId;
+    const count = (counters.get(parentId) || 0) + 1;
+    counters.set(parentId, count);
+    const parentLabel = parentId ? numbering.get(parentId) : undefined;
+    numbering.set(task.id, parentLabel ? `${parentLabel}.${count}` : `${count}`);
+  }
+  return numbering;
+};
 
 const formatDuration = (totalMinutes: number) => {
   if (totalMinutes === 0) return '0分';
@@ -20,10 +47,15 @@ const formatDuration = (totalMinutes: number) => {
 
 export const Stats: React.FC = () => {
   const { tasks, timeslots } = useTaskStore();
-  
+
   // Default to current week (Sunday to Saturday)
   const [startDate, setStartDate] = useState<Date | null>(startOfWeek(new Date(), { weekStartsOn: 0 }));
   const [endDate, setEndDate] = useState<Date | null>(endOfWeek(new Date(), { weekStartsOn: 0 }));
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+  // 未封存任務 + WBS 編號（用於選擇器）
+  const activeTasks = useMemo(() => tasks.filter(t => !t.archived), [tasks]);
+  const wbsNumbers = useMemo(() => computeTaskWbsNumbers(activeTasks), [activeTasks]);
 
   // Navigation Logic
   const diffDays = useMemo(() => {
@@ -58,16 +90,21 @@ export const Stats: React.FC = () => {
   };
 
   const { stats, totalMinutes } = useMemo(() => {
-    if (!startDate || !endDate || !isValid(startDate) || !isValid(endDate)) 
+    if (!startDate || !endDate || !isValid(startDate) || !isValid(endDate))
         return { stats: { main: [], sub: [] }, totalMinutes: 0 };
-        
+
     const start = startOfDay(startDate).getTime();
     const end = endOfDay(endDate).getTime();
     const mainMap = new Map<string, number>();
     const subMap = new Map<string, number>();
     let totalMs = 0;
 
+    // 若有選定任務節點，只統計該節點及其子孫任務的 timeslot
+    const allowedIds = selectedTaskId ? getAllDescendantIds(selectedTaskId, tasks) : null;
+
     timeslots.forEach(ts => {
+        if (allowedIds !== null && (!ts.taskId || !allowedIds.has(ts.taskId))) return;
+
         const effectiveStart = Math.max(ts.startTime, start);
         const effectiveEnd = Math.min(ts.endTime || Date.now(), end);
         if (effectiveStart < end && effectiveEnd > start) {
@@ -90,11 +127,11 @@ export const Stats: React.FC = () => {
 
     const totalMin = Math.round(totalMs / (1000 * 60));
 
-    return { 
+    return {
         stats: { main: formatData(mainMap), sub: formatData(subMap) },
         totalMinutes: totalMin
     };
-  }, [tasks, timeslots, startDate, endDate]);
+  }, [tasks, timeslots, startDate, endDate, selectedTaskId]);
 
   const renderTooltip = (value: any) => {
       const percent = totalMinutes > 0 ? ((value / totalMinutes) * 100).toFixed(1) : 0;
@@ -156,6 +193,52 @@ export const Stats: React.FC = () => {
                         </Typography>
                     </Box>
                 </Paper>
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <AccountTree fontSize="small" color="action" />
+                    <Typography variant="body2" color="textSecondary" sx={{ whiteSpace: 'nowrap' }}>
+                        篩選任務節點：
+                    </Typography>
+                    <Autocomplete
+                        size="small"
+                        options={activeTasks}
+                        value={activeTasks.find(t => t.id === selectedTaskId) ?? null}
+                        onChange={(_, task) => setSelectedTaskId(task ? task.id : null)}
+                        getOptionLabel={(task) => {
+                            const wbs = wbsNumbers.get(task.id);
+                            return wbs ? `${wbs}  ${task.title}` : task.title;
+                        }}
+                        renderOption={(props, task) => {
+                            const wbs = wbsNumbers.get(task.id);
+                            const depth = wbs ? wbs.split('.').length - 1 : 0;
+                            return (
+                                <li {...props} key={task.id}>
+                                    <Box sx={{ pl: depth * 2 }}>
+                                        <Typography variant="body2" component="span" color="textSecondary" sx={{ mr: 1, fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                                            {wbs}
+                                        </Typography>
+                                        {task.title}
+                                    </Box>
+                                </li>
+                            );
+                        }}
+                        renderInput={(params) => (
+                            <TextField
+                                {...params}
+                                placeholder="全部任務（不篩選）"
+                                sx={{ minWidth: 320 }}
+                            />
+                        )}
+                        clearOnEscape
+                        isOptionEqualToValue={(option, value) => option.id === value.id}
+                    />
+                    {selectedTaskId && (
+                        <Typography variant="caption" color="warning.main">
+                            ＊ 僅統計選定節點及其子孫任務
+                        </Typography>
+                    )}
+                </Box>
             </Grid>
         </Grid>
       </Paper>
