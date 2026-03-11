@@ -6,7 +6,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, differenceInDays, addWeeks, subWeeks, addDays, subDays, isValid } from 'date-fns';
 import { AccessTime, ChevronLeft, ChevronRight, AccountTree } from '@mui/icons-material';
 import type { Task } from '../types';
-import { computeTaskWbsNumbers } from '../utils/wbs';
+import { computeTaskWbsMap } from '../utils/wbs';
 
 const COLORS = ['#1976d2', '#2e7d32', '#ed6c02', '#9c27b0', '#d32f2f', '#0288d1', '#7b1fa2', '#388e3c', '#f57c00', '#455a64'];
 
@@ -42,7 +42,7 @@ export const Stats: React.FC = () => {
 
   // 未封存任務 + WBS 編號（用於選擇器）
   const activeTasks = useMemo(() => tasks.filter(t => !t.archived), [tasks]);
-  const wbsNumbers = useMemo(() => computeTaskWbsNumbers(activeTasks), [activeTasks]);
+  const { wbsNumbers, sorted: sortedTasks } = useMemo(() => computeTaskWbsMap(activeTasks), [activeTasks]);
 
   // Navigation Logic
   const diffDays = useMemo(() => {
@@ -189,8 +189,8 @@ export const Stats: React.FC = () => {
                     </Typography>
                     <Autocomplete
                         size="small"
-                        options={activeTasks}
-                        value={activeTasks.find(t => t.id === selectedTaskId) ?? null}
+                        options={sortedTasks}
+                        value={sortedTasks.find(t => t.id === selectedTaskId) ?? null}
                         onChange={(_, task) => setSelectedTaskId(task ? task.id : null)}
                         getOptionLabel={(task) => {
                             const wbs = wbsNumbers.get(task.id);

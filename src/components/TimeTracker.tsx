@@ -13,7 +13,7 @@ import { getCategoryColor } from '../utils/colors';
 import { TaskForm } from './TaskForm';
 import type { Timeslot, Task } from '../types';
 import { exportTimeslotsToICS, parseICS } from '../utils/ics';
-import { computeTaskWbsNumbers } from '../utils/wbs';
+import { computeTaskWbsMap } from '../utils/wbs';
 
 interface TimeSlot extends Timeslot {
   taskTitle: string;
@@ -304,7 +304,7 @@ export const TimeTracker: React.FC = () => {
 
   // 非封存任務清單 + WBS 編號
   const activeTasks = useMemo(() => tasks.filter(t => !t.archived), [tasks]);
-  const wbsNumbers = useMemo(() => computeTaskWbsNumbers(activeTasks), [activeTasks]);
+  const { wbsNumbers, sorted: sortedTasks } = useMemo(() => computeTaskWbsMap(activeTasks), [activeTasks]);
 
   return (
     <Box sx={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column' }}>
@@ -571,8 +571,8 @@ export const TimeTracker: React.FC = () => {
             </FormControl>
             <Autocomplete
               size="small"
-              options={activeTasks}
-              value={activeTasks.find(t => t.id === editTaskId) ?? null}
+              options={sortedTasks}
+              value={sortedTasks.find(t => t.id === editTaskId) ?? null}
               onChange={(_, task) => setEditTaskId(task ? task.id : '')}
               getOptionLabel={(task) => {
                 const wbs = wbsNumbers.get(task.id);
@@ -628,8 +628,8 @@ export const TimeTracker: React.FC = () => {
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Autocomplete
               size="small"
-              options={activeTasks}
-              value={activeTasks.find(t => t.id === quickAddTaskId) ?? null}
+              options={sortedTasks}
+              value={sortedTasks.find(t => t.id === quickAddTaskId) ?? null}
               onChange={(_, task) => setQuickAddTaskId(task ? task.id : '')}
               getOptionLabel={(task) => {
                 const wbs = wbsNumbers.get(task.id);
