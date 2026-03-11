@@ -4,6 +4,17 @@
 
 ---
 
+## [Unreleased] — 2026-03-11 (d)
+
+### 修正 (Fixes)
+
+- **Timeslot 任務下拉選單 WBS 編號錯誤**
+  - 原 `computeTaskWbsNumbers` 以線性掃描陣列計算 WBS，假設父任務必在子任務之前；經 reorder（上移/下移）操作後，子任務可能排在父任務前方，導致 WBS 計數器被重置、編號錯亂
+  - 改為遞迴建構：先以 `parentId` 分群，再從根任務遞迴編號，與 TaskList 的 `buildHierarchy` 邏輯一致
+  - 同時處理孤兒任務（parent 已封存但子任務仍存在）的情境
+
+---
+
 ## [Unreleased] — 2026-03-11 (c)
 
 ### 改善 (Improvements)
