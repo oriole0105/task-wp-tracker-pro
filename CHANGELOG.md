@@ -4,6 +4,17 @@
 
 ---
 
+## [Unreleased] — 2026-03-12 (b)
+
+### 新功能 (Features)
+
+- **週報：進度追蹤表（有進展）新增「說明」欄位**
+  - 雙擊該列的「說明」欄位即可輸入備註（如落後原因），操作方式與無進展表一致
+  - 備註同樣儲存至 `WeeklySnapshot.note`，每期獨立記錄
+  - 三處 AsciiDoc 輸出（`progressAsciiDoc`、`progressWithAsciiDoc`、`progressWithoutAsciiDoc`）皆同步新增說明欄
+
+---
+
 ## [Unreleased] — 2026-03-12 (a)
 
 ### 新功能 (Features)

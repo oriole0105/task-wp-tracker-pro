@@ -412,9 +412,9 @@ const WeeklyReportPage: React.FC = () => {
     const lines: string[] = [];
     lines.push(`=== 進度追蹤（${periodLabels.rangeDisplay}）`);
     lines.push('');
-    lines.push('[cols="15,6,4,4,5,9,5",options="header"]');
+    lines.push('[cols="13,5,4,4,5,8,5,12",options="header"]');
     lines.push('|===');
-    lines.push(`|任務 / 工作產出 |預期完成日 |${periodLabels.prevShort.replace('%', '')}% |${periodLabels.currShort.replace('%', '')}% |${periodLabels.deltaLabel} |時程績效 SPI |狀態`);
+    lines.push(`|任務 / 工作產出 |預期完成日 |${periodLabels.prevShort.replace('%', '')}% |${periodLabels.currShort.replace('%', '')}% |${periodLabels.deltaLabel} |時程績效 SPI |狀態 |說明`);
     lines.push('');
 
     progressTasks
@@ -426,6 +426,8 @@ const WeeklyReportPage: React.FC = () => {
         const taskDelta = prevTask !== undefined && thisTask !== undefined ? thisTask - prevTask : undefined;
         const spiData = calcSPI(task);
         const endDateCell = task.estimatedEndDate ? format(task.estimatedEndDate, 'yyyy-MM-dd') : '—';
+        const weeklyNote = getSnapshotNoteInPeriod(task.weeklySnapshots, currStartStr, currEndStr);
+        const noteCell = weeklyNote ? weeklyNote.replace(/\n/g, ' +\n') : '—';
 
         lines.push(`|${fmtTitleCell(task.title, task.mainCategory, task.status)}`);
         lines.push(`|${endDateCell}`);
@@ -434,6 +436,7 @@ const WeeklyReportPage: React.FC = () => {
         lines.push(`|${fmtDelta(taskDelta)}`);
         lines.push(`|${fmtSpiCell(spiData)}`);
         lines.push(`|${fmtStatusCell(task.status)}`);
+        lines.push(`|${noteCell}`);
         lines.push('');
 
         const periodOutputs = task.outputs.filter(o =>
@@ -452,6 +455,7 @@ const WeeklyReportPage: React.FC = () => {
           lines.push(`|${prevOut !== undefined ? `${prevOut}%` : '—'}`);
           lines.push(`|${fmtVal(thisOut, thisOutSnap === undefined && thisOut !== undefined)}`);
           lines.push(`|${fmtDelta(outDelta)}`);
+          lines.push('|');
           lines.push('|');
           lines.push('|');
           lines.push('');
@@ -806,9 +810,9 @@ const WeeklyReportPage: React.FC = () => {
     lines.push('');
     lines.push(`_${periodLabels.rangeDisplay}_`);
     lines.push('');
-    lines.push('[cols="15,6,4,4,5,9,5",options="header"]');
+    lines.push('[cols="13,5,4,4,5,8,5,12",options="header"]');
     lines.push('|===');
-    lines.push(`|任務 / 工作產出 |預期完成日 |${periodLabels.prevShort.replace('%', '')}% |${periodLabels.currShort.replace('%', '')}% |${periodLabels.deltaLabel} |時程績效 SPI |狀態`);
+    lines.push(`|任務 / 工作產出 |預期完成日 |${periodLabels.prevShort.replace('%', '')}% |${periodLabels.currShort.replace('%', '')}% |${periodLabels.deltaLabel} |時程績效 SPI |狀態 |說明`);
     lines.push('');
 
     withProgress.forEach(task => {
@@ -819,6 +823,8 @@ const WeeklyReportPage: React.FC = () => {
       const taskDelta = prevTask !== undefined && thisTask !== undefined ? thisTask - prevTask : undefined;
       const spiData = noTrack ? null : calcSPI(task);
       const endDateCell = task.estimatedEndDate ? format(task.estimatedEndDate, 'yyyy-MM-dd') : '—';
+      const weeklyNote = getSnapshotNoteInPeriod(task.weeklySnapshots, currStartStr, currEndStr);
+      const noteCell = weeklyNote ? weeklyNote.replace(/\n/g, ' +\n') : '—';
 
       lines.push(`|${fmtTitleCell(task.title, task.mainCategory, task.status)}`);
       lines.push(`|${endDateCell}`);
@@ -827,6 +833,7 @@ const WeeklyReportPage: React.FC = () => {
       lines.push(`|${noTrack ? '—' : fmtDelta(taskDelta)}`);
       lines.push(`|${fmtSpiCell(spiData)}`);
       lines.push(`|${fmtStatusCell(task.status)}`);
+      lines.push(`|${noteCell}`);
       lines.push('');
 
       task.outputs.filter(o =>
@@ -843,6 +850,7 @@ const WeeklyReportPage: React.FC = () => {
         lines.push(`|${prevOut !== undefined ? `${prevOut}%` : '—'}`);
         lines.push(`|${fmtVal(thisOut, thisOutSnap === undefined && thisOut !== undefined)}`);
         lines.push(`|${fmtDelta(outDelta)}`);
+        lines.push('|');
         lines.push('|');
         lines.push('|');
         lines.push('');
@@ -1248,13 +1256,14 @@ const WeeklyReportPage: React.FC = () => {
           <Table size="small">
             <TableHead>
               <TableRow sx={{ bgcolor: 'action.hover' }}>
-                <TableCell sx={{ fontWeight: 'bold', width: '28%' }}>任務 / 工作產出</TableCell>
-                <TableCell sx={{ fontWeight: 'bold', width: '9%' }}>預期完成日</TableCell>
-                <TableCell sx={{ fontWeight: 'bold', width: '8%' }}>{periodLabels.prevShort}</TableCell>
-                <TableCell sx={{ fontWeight: 'bold', width: '8%' }}>{periodLabels.currShort}</TableCell>
-                <TableCell sx={{ fontWeight: 'bold', width: '10%' }}>{periodLabels.deltaLabel}</TableCell>
-                <TableCell sx={{ fontWeight: 'bold', width: '22%' }}>時程績效 SPI</TableCell>
-                <TableCell sx={{ fontWeight: 'bold', width: '8%' }}>狀態</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', width: '22%' }}>任務 / 工作產出</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', width: '7%' }}>預期完成日</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', width: '6%' }}>{periodLabels.prevShort}</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', width: '6%' }}>{periodLabels.currShort}</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', width: '8%' }}>{periodLabels.deltaLabel}</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', width: '16%' }}>時程績效 SPI</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', width: '7%' }}>狀態</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', width: '28%' }}>說明</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -1264,7 +1273,7 @@ const WeeklyReportPage: React.FC = () => {
                 if (withProgress.length === 0) {
                   return (
                     <TableRow>
-                      <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                      <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
                         <Typography color="text.secondary">此範圍內無進展中的任務</Typography>
                       </TableCell>
                     </TableRow>
@@ -1363,6 +1372,38 @@ const WeeklyReportPage: React.FC = () => {
                             variant="outlined"
                           />
                         </TableCell>
+                        <TableCell
+                          onDoubleClick={() => {
+                            const note = getSnapshotNoteInPeriod(task.weeklySnapshots, currStartStr, currEndStr) ?? '';
+                            handleStartEditNote(task.id, note);
+                          }}
+                          sx={{ cursor: 'pointer', minWidth: 120 }}
+                        >
+                          {editingNoteTaskId === task.id ? (
+                            <TextField
+                              autoFocus
+                              fullWidth
+                              multiline
+                              size="small"
+                              value={editingNoteText}
+                              onChange={(e) => setEditingNoteText(e.target.value)}
+                              onBlur={handleSaveNote}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveNote(); }
+                                if (e.key === 'Escape') { setEditingNoteTaskId(null); }
+                              }}
+                              placeholder="輸入說明..."
+                              variant="outlined"
+                              sx={{ '& .MuiInputBase-input': { fontSize: '0.875rem' } }}
+                            />
+                          ) : (() => {
+                            const weeklyNote = getSnapshotNoteInPeriod(task.weeklySnapshots, currStartStr, currEndStr);
+                            if (!weeklyNote) {
+                              return <Typography variant="caption" color="text.disabled">雙擊編輯</Typography>;
+                            }
+                            return <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{weeklyNote}</Typography>;
+                          })()}
+                        </TableCell>
                       </TableRow>
 
                       {periodOutputs.map(output => {
@@ -1403,6 +1444,7 @@ const WeeklyReportPage: React.FC = () => {
                               {renderCompleteness(thisOut, thisOutSnap === undefined && thisOut !== undefined)}
                             </TableCell>
                             <TableCell>{renderDeltaChip(outDelta)}</TableCell>
+                            <TableCell />
                             <TableCell />
                             <TableCell />
                           </TableRow>
