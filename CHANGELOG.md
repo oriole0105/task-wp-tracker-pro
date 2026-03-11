@@ -4,6 +4,19 @@
 
 ---
 
+## [Unreleased] — 2026-03-12 (a)
+
+### 新功能 (Features)
+
+- **週報：本期無進展任務「原因 / 說明」欄位可雙擊編輯**
+  - 雙擊該列的「原因 / 說明」欄位即可輸入無進展原因，支援多行文字（Shift+Enter 換行）
+  - 備註儲存至 `WeeklySnapshot.note`，每期獨立記錄
+  - PAUSED 任務同時顯示暫停原因（`pauseReason`）與期間備註
+  - AsciiDoc 輸出同步包含暫停原因與期間備註
+  - Store 新增 `updateTaskWeeklyNote` action，僅更新指定週的備註而不影響完成度
+
+---
+
 ## [Unreleased] — 2026-03-11 (e)
 
 ### 改善 (Improvements)

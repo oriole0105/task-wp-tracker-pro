@@ -17,7 +17,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Task, TaskStatus, WeeklySnapshot, WorkOutput } from '../types';
 
 const WeeklyReportPage: React.FC = () => {
-  const { tasks, timeslots, mainCategories, holidays, outputTypes, updateTask } = useTaskStore();
+  const { tasks, timeslots, mainCategories, holidays, outputTypes, updateTask, updateTaskWeeklyNote } = useTaskStore();
 
   // --- Report Type & Period Navigation ---
   const [reportType, setReportType] = useState<'weekly' | 'bimonthly' | 'semiannual'>('weekly');
@@ -144,6 +144,31 @@ const WeeklyReportPage: React.FC = () => {
       .filter(s => s.weekStart >= startStr && s.weekStart <= endStr)
       .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
     return valid.length > 0 ? valid[valid.length - 1].completeness : undefined;
+  };
+
+  const getSnapshotNoteInPeriod = (snapshots: WeeklySnapshot[] | undefined, startStr: string, endStr: string): string | undefined => {
+    if (!snapshots?.length) return undefined;
+    const valid = snapshots
+      .filter(s => s.weekStart >= startStr && s.weekStart <= endStr)
+      .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+    return valid.length > 0 ? valid[valid.length - 1].note : undefined;
+  };
+
+  // --- Inline note editing for no-progress tasks ---
+  const [editingNoteTaskId, setEditingNoteTaskId] = useState<string | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState('');
+
+  const handleStartEditNote = (taskId: string, currentNote: string) => {
+    setEditingNoteTaskId(taskId);
+    setEditingNoteText(currentNote);
+  };
+
+  const handleSaveNote = () => {
+    if (!editingNoteTaskId) return;
+    const { currStartStr } = progressSplit;
+    updateTaskWeeklyNote(editingNoteTaskId, currStartStr, editingNoteText.trim());
+    setEditingNoteTaskId(null);
+    setEditingNoteText('');
   };
 
   // --- Hierarchy Level Logic ---
@@ -854,9 +879,14 @@ const WeeklyReportPage: React.FC = () => {
       const thisTask = noTrack ? undefined : (thisTaskSnap ?? task.completeness);
       const spiData = noTrack ? null : calcSPI(task);
       const endDateCell = task.estimatedEndDate ? format(task.estimatedEndDate, 'yyyy-MM-dd') : '—';
-      const reasonCell = task.status === 'PAUSED' && task.pauseReason
+      const weeklyNote = getSnapshotNoteInPeriod(task.weeklySnapshots, currStartStr, currEndStr);
+      const pauseText = task.status === 'PAUSED' && task.pauseReason
         ? task.pauseReason.replace(/\n/g, ' +\n')
-        : '—';
+        : '';
+      const noteText = weeklyNote ? weeklyNote.replace(/\n/g, ' +\n') : '';
+      const reasonCell = pauseText && noteText
+        ? `${pauseText} +\n${noteText}`
+        : pauseText || noteText || '—';
 
       lines.push(`|${fmtTitleCell(task.title, task.mainCategory, task.status)}`);
       lines.push(`|${endDateCell}`);
@@ -1498,14 +1528,51 @@ const WeeklyReportPage: React.FC = () => {
                           <Chip label={statusLabels[task.status]} size="small"
                             color={statusColors[task.status]} variant="outlined" />
                         </TableCell>
-                        <TableCell>
-                          {task.status === 'PAUSED' && task.pauseReason ? (
-                            <Typography variant="body2" color="warning.main" sx={{ whiteSpace: 'pre-wrap' }}>
-                              {task.pauseReason}
-                            </Typography>
-                          ) : (
-                            <Typography variant="caption" color="text.disabled">—</Typography>
-                          )}
+                        <TableCell
+                          onDoubleClick={() => {
+                            const note = getSnapshotNoteInPeriod(task.weeklySnapshots, currStartStr, currEndStr) ?? '';
+                            handleStartEditNote(task.id, note);
+                          }}
+                          sx={{ cursor: 'pointer', minWidth: 120 }}
+                        >
+                          {editingNoteTaskId === task.id ? (
+                            <TextField
+                              autoFocus
+                              fullWidth
+                              multiline
+                              size="small"
+                              value={editingNoteText}
+                              onChange={(e) => setEditingNoteText(e.target.value)}
+                              onBlur={handleSaveNote}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveNote(); }
+                                if (e.key === 'Escape') { setEditingNoteTaskId(null); }
+                              }}
+                              placeholder="輸入原因或說明..."
+                              variant="outlined"
+                              sx={{ '& .MuiInputBase-input': { fontSize: '0.875rem' } }}
+                            />
+                          ) : (() => {
+                            const weeklyNote = getSnapshotNoteInPeriod(task.weeklySnapshots, currStartStr, currEndStr);
+                            const hasPauseReason = task.status === 'PAUSED' && task.pauseReason;
+                            if (!hasPauseReason && !weeklyNote) {
+                              return <Typography variant="caption" color="text.disabled">雙擊編輯</Typography>;
+                            }
+                            return (
+                              <Box>
+                                {hasPauseReason && (
+                                  <Typography variant="body2" color="warning.main" sx={{ whiteSpace: 'pre-wrap' }}>
+                                    {task.pauseReason}
+                                  </Typography>
+                                )}
+                                {weeklyNote && (
+                                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: hasPauseReason ? 0.5 : 0 }}>
+                                    {weeklyNote}
+                                  </Typography>
+                                )}
+                              </Box>
+                            );
+                          })()}
                         </TableCell>
                       </TableRow>
 

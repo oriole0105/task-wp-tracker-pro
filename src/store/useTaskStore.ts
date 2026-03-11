@@ -98,6 +98,7 @@ interface TaskState {
   archiveAllDone: () => void;
 
   updateTaskSnapshots: (id: string, snapshots: WeeklySnapshot[]) => void;
+  updateTaskWeeklyNote: (id: string, weekStart: string, note: string) => void;
 
   getTaskById: (id: string) => Task | undefined;
   getSubTasks: (parentId: string) => Task[];
@@ -381,6 +382,23 @@ export const useTaskStore = create<TaskState>()(
         set((state) => ({
           _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
           tasks: state.tasks.map(t => t.id === id ? { ...t, weeklySnapshots: snapshots } : t),
+        }));
+      },
+
+      updateTaskWeeklyNote: (id, weekStart, note) => {
+        set((state) => ({
+          tasks: state.tasks.map(t => {
+            if (t.id !== id) return t;
+            const snaps = t.weeklySnapshots ?? [];
+            const idx = snaps.findIndex(s => s.weekStart === weekStart);
+            if (idx >= 0) {
+              const updated = [...snaps];
+              updated[idx] = { ...updated[idx], note: note || undefined };
+              return { ...t, weeklySnapshots: updated };
+            }
+            // 無既有快照時，建立一筆僅含 note 的快照（completeness 取目前值或 0）
+            return { ...t, weeklySnapshots: [...snaps, { weekStart, completeness: t.completeness ?? 0, note: note || undefined }] };
+          }),
         }));
       },
 
