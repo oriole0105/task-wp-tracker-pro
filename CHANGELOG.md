@@ -4,6 +4,21 @@
 
 ---
 
+## [Unreleased] — 2026-03-11 (c)
+
+### 改善 (Improvements)
+
+- **週報：AsciiDoc 進度表新增狀態顏色標記**
+  - 匯出的 AsciiDoc 進度追蹤表中，依狀態套用 `[color]#text#` inline 顏色標記
+    - 暫停 → 紅色（含標題欄與狀態欄）
+    - 完成 → 綠色
+    - 進行中 → 藍色
+    - SPI < 1.0（落後 / 嚴重落後）→ SPI 整段文字紅色
+  - 修正多行 SPI 文字（含 AsciiDoc 換行 `+`）需逐行套用顏色的問題
+  - 將顏色 helper（`adocColor`、`fmtStatusCell`、`fmtSpiCell`、`fmtTitleCell`）提取為元件層級共用函式，同時套用至 `progressWithAsciiDoc`、`progressWithoutAsciiDoc`、`progressAsciiDoc` 三處
+
+---
+
 ## [Unreleased] — 2026-03-11 (b)
 
 ### 新功能 (Features)

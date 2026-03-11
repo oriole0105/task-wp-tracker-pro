@@ -330,12 +330,45 @@ const WeeklyReportPage: React.FC = () => {
     setExcludedMainCats(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
   };
 
+  // --- AsciiDoc color helpers ---
+  const adocColor = (text: string, color: 'red' | 'green' | 'blue'): string =>
+    `[${color}]#${text}#`;
+  const getStatusColor = (status: TaskStatus): 'red' | 'green' | 'blue' | null => {
+    if (status === 'PAUSED') return 'red';
+    if (status === 'DONE') return 'green';
+    if (status === 'IN_PROGRESS') return 'blue';
+    return null;
+  };
+  const adocStatusLabels: Record<TaskStatus, string> = {
+    BACKLOG: '待規劃', TODO: '待執行', IN_PROGRESS: '進行中',
+    PAUSED: '暫停', DONE: '完成', CANCELLED: '取消',
+  };
+  const fmtStatusCell = (status: TaskStatus): string => {
+    const color = getStatusColor(status);
+    const label = adocStatusLabels[status];
+    return color ? adocColor(label, color) : label;
+  };
+  const fmtSpiCell = (spiData: { planned: number; spi: number } | null): string => {
+    if (!spiData) return '—';
+    const line1 = `SPI ${spiData.spi.toFixed(2)} ${spiData.spi >= 1.0 ? '正常/超前' : spiData.spi >= 0.8 ? '落後' : '嚴重落後'}`;
+    const line2 = `計畫進度 ${spiData.planned}%`;
+    if (spiData.spi < 1.0) {
+      return `${adocColor(line1, 'red')} +\n${adocColor(line2, 'red')}`;
+    }
+    return `${line1} +\n${line2}`;
+  };
+  const fmtTitleCell = (title: string, mainCategory: string | undefined, status: TaskStatus): string => {
+    const line1 = `*${title}*`;
+    const line2 = mainCategory ? `（${mainCategory}）` : null;
+    const color = getStatusColor(status);
+    if (color === 'red') {
+      return line2 ? `${adocColor(line1, 'red')} +\n${adocColor(line2, 'red')}` : adocColor(line1, 'red');
+    }
+    return line2 ? `${line1} +\n${line2}` : line1;
+  };
+
   // --- AsciiDoc Progress Table ---
   const progressAsciiDoc = useMemo(() => {
-    const statusLabels: Record<TaskStatus, string> = {
-      BACKLOG: '待規劃', TODO: '待執行', IN_PROGRESS: '進行中',
-      PAUSED: '暫停', DONE: '完成', CANCELLED: '取消',
-    };
     const fmtDelta = (delta: number | undefined): string => {
       if (delta === undefined) return '—';
       if (delta > 0) return `↑ +${delta}%`;
@@ -367,21 +400,15 @@ const WeeklyReportPage: React.FC = () => {
         const thisTask = thisTaskSnap ?? task.completeness;
         const taskDelta = prevTask !== undefined && thisTask !== undefined ? thisTask - prevTask : undefined;
         const spiData = calcSPI(task);
-        const spiCell = spiData
-          ? `SPI ${spiData.spi.toFixed(2)} ${spiData.spi >= 1.0 ? '正常/超前' : spiData.spi >= 0.8 ? '落後' : '嚴重落後'} +\n計畫進度 ${spiData.planned}%`
-          : '—';
         const endDateCell = task.estimatedEndDate ? format(task.estimatedEndDate, 'yyyy-MM-dd') : '—';
-        const titleCell = task.mainCategory
-          ? `*${task.title}* +\n（${task.mainCategory}）`
-          : `*${task.title}*`;
 
-        lines.push(`|${titleCell}`);
+        lines.push(`|${fmtTitleCell(task.title, task.mainCategory, task.status)}`);
         lines.push(`|${endDateCell}`);
         lines.push(`|${prevTask !== undefined ? `${prevTask}%` : '—'}`);
         lines.push(`|${fmtVal(thisTask, thisTaskSnap === undefined && thisTask !== undefined)}`);
         lines.push(`|${fmtDelta(taskDelta)}`);
-        lines.push(`|${spiCell}`);
-        lines.push(`|${statusLabels[task.status]}`);
+        lines.push(`|${fmtSpiCell(spiData)}`);
+        lines.push(`|${fmtStatusCell(task.status)}`);
         lines.push('');
 
         const periodOutputs = task.outputs.filter(o =>
@@ -738,10 +765,6 @@ const WeeklyReportPage: React.FC = () => {
   // --- AsciiDoc Export Sections ---
   const progressWithAsciiDoc = useMemo(() => {
     const { withProgress, prevEndStr, currStartStr, currEndStr } = progressSplit;
-    const statusLabels: Record<TaskStatus, string> = {
-      BACKLOG: '待規劃', TODO: '待執行', IN_PROGRESS: '進行中',
-      PAUSED: '暫停', DONE: '完成', CANCELLED: '取消',
-    };
     const fmtDelta = (delta: number | undefined): string => {
       if (delta === undefined) return '—';
       if (delta > 0) return `↑ +${delta}%`;
@@ -770,19 +793,15 @@ const WeeklyReportPage: React.FC = () => {
       const thisTask = noTrack ? undefined : (thisTaskSnap ?? task.completeness);
       const taskDelta = prevTask !== undefined && thisTask !== undefined ? thisTask - prevTask : undefined;
       const spiData = noTrack ? null : calcSPI(task);
-      const spiCell = spiData
-        ? `SPI ${spiData.spi.toFixed(2)} ${spiData.spi >= 1.0 ? '正常/超前' : spiData.spi >= 0.8 ? '落後' : '嚴重落後'} +\n計畫進度 ${spiData.planned}%`
-        : '—';
       const endDateCell = task.estimatedEndDate ? format(task.estimatedEndDate, 'yyyy-MM-dd') : '—';
-      const titleCell = task.mainCategory ? `*${task.title}* +\n（${task.mainCategory}）` : `*${task.title}*`;
 
-      lines.push(`|${titleCell}`);
+      lines.push(`|${fmtTitleCell(task.title, task.mainCategory, task.status)}`);
       lines.push(`|${endDateCell}`);
       lines.push(`|${noTrack ? '—' : prevTask !== undefined ? `${prevTask}%` : '—'}`);
       lines.push(`|${noTrack ? '—' : fmtVal(thisTask, thisTaskSnap === undefined && thisTask !== undefined)}`);
       lines.push(`|${noTrack ? '—' : fmtDelta(taskDelta)}`);
-      lines.push(`|${spiCell}`);
-      lines.push(`|${statusLabels[task.status]}`);
+      lines.push(`|${fmtSpiCell(spiData)}`);
+      lines.push(`|${fmtStatusCell(task.status)}`);
       lines.push('');
 
       task.outputs.filter(o =>
@@ -813,10 +832,6 @@ const WeeklyReportPage: React.FC = () => {
     const { withoutProgress, prevEndStr, currStartStr, currEndStr } = progressSplit;
     if (withoutProgress.length === 0) return '';
 
-    const statusLabels: Record<TaskStatus, string> = {
-      BACKLOG: '待規劃', TODO: '待執行', IN_PROGRESS: '進行中',
-      PAUSED: '暫停', DONE: '完成', CANCELLED: '取消',
-    };
     const fmtVal = (value: number | undefined, isFallback: boolean): string => {
       if (value === undefined) return '—';
       return `${value}%${isFallback ? ' (目前)' : ''}`;
@@ -838,16 +853,15 @@ const WeeklyReportPage: React.FC = () => {
       const thisTaskSnap = noTrack ? undefined : getSnapshotInPeriod(task.weeklySnapshots, currStartStr, currEndStr);
       const thisTask = noTrack ? undefined : (thisTaskSnap ?? task.completeness);
       const endDateCell = task.estimatedEndDate ? format(task.estimatedEndDate, 'yyyy-MM-dd') : '—';
-      const titleCell = task.mainCategory ? `*${task.title}* +\n（${task.mainCategory}）` : `*${task.title}*`;
       const reasonCell = task.status === 'PAUSED' && task.pauseReason
         ? task.pauseReason.replace(/\n/g, ' +\n')
         : '—';
 
-      lines.push(`|${titleCell}`);
+      lines.push(`|${fmtTitleCell(task.title, task.mainCategory, task.status)}`);
       lines.push(`|${endDateCell}`);
       lines.push(`|${noTrack ? '—' : prevTask !== undefined ? `${prevTask}%` : '—'}`);
       lines.push(`|${noTrack ? '—' : fmtVal(thisTask, thisTaskSnap === undefined && thisTask !== undefined)}`);
-      lines.push(`|${statusLabels[task.status]}`);
+      lines.push(`|${fmtStatusCell(task.status)}`);
       lines.push(`|${reasonCell}`);
       lines.push('');
 
