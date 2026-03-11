@@ -842,9 +842,9 @@ const WeeklyReportPage: React.FC = () => {
     lines.push('');
     lines.push('_包含：暫停中任務、本期完成度與前期相同（無變動）的任務_');
     lines.push('');
-    lines.push('[cols="15,6,4,4,6,15",options="header"]');
+    lines.push('[cols="15,6,4,4,8,6,15",options="header"]');
     lines.push('|===');
-    lines.push(`|任務 / 工作產出 |預期完成日 |${periodLabels.prevShort.replace('%', '')}% |${periodLabels.currShort.replace('%', '')}% |狀態 |原因 / 說明`);
+    lines.push(`|任務 / 工作產出 |預期完成日 |${periodLabels.prevShort.replace('%', '')}% |${periodLabels.currShort.replace('%', '')}% |時程績效 SPI |狀態 |原因 / 說明`);
     lines.push('');
 
     withoutProgress.forEach(task => {
@@ -852,6 +852,7 @@ const WeeklyReportPage: React.FC = () => {
       const prevTask = noTrack ? undefined : getSnapshotAtOrBefore(task.weeklySnapshots, prevEndStr);
       const thisTaskSnap = noTrack ? undefined : getSnapshotInPeriod(task.weeklySnapshots, currStartStr, currEndStr);
       const thisTask = noTrack ? undefined : (thisTaskSnap ?? task.completeness);
+      const spiData = noTrack ? null : calcSPI(task);
       const endDateCell = task.estimatedEndDate ? format(task.estimatedEndDate, 'yyyy-MM-dd') : '—';
       const reasonCell = task.status === 'PAUSED' && task.pauseReason
         ? task.pauseReason.replace(/\n/g, ' +\n')
@@ -861,6 +862,7 @@ const WeeklyReportPage: React.FC = () => {
       lines.push(`|${endDateCell}`);
       lines.push(`|${noTrack ? '—' : prevTask !== undefined ? `${prevTask}%` : '—'}`);
       lines.push(`|${noTrack ? '—' : fmtVal(thisTask, thisTaskSnap === undefined && thisTask !== undefined)}`);
+      lines.push(`|${fmtSpiCell(spiData)}`);
       lines.push(`|${fmtStatusCell(task.status)}`);
       lines.push(`|${reasonCell}`);
       lines.push('');
@@ -871,6 +873,7 @@ const WeeklyReportPage: React.FC = () => {
         const otMeta = outputTypes.find(t => t.id === output.outputTypeId);
         const label = otMeta ? `${output.name} [${otMeta.name}]` : output.name;
         lines.push(`|\u00a0\u00a0↳ ${label}`);
+        lines.push('|');
         lines.push('|');
         lines.push('|');
         lines.push('|');
@@ -1397,12 +1400,13 @@ const WeeklyReportPage: React.FC = () => {
             <Table size="small">
               <TableHead>
                 <TableRow sx={{ bgcolor: 'action.hover' }}>
-                  <TableCell sx={{ fontWeight: 'bold', width: '28%' }}>任務 / 工作產出</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '24%' }}>任務 / 工作產出</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: '9%' }}>預期完成日</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: '8%' }}>{periodLabels.prevShort}</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: '8%' }}>{periodLabels.currShort}</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: '10%' }}>狀態</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: '37%' }}>原因 / 說明</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '7%' }}>{periodLabels.prevShort}</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '7%' }}>{periodLabels.currShort}</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '16%' }}>時程績效 SPI</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '8%' }}>狀態</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '29%' }}>原因 / 說明</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -1412,6 +1416,8 @@ const WeeklyReportPage: React.FC = () => {
                   const prevTask = noTrack ? undefined : getSnapshotAtOrBefore(task.weeklySnapshots, prevEndStr);
                   const thisTaskSnap = noTrack ? undefined : getSnapshotInPeriod(task.weeklySnapshots, currStartStr, currEndStr);
                   const thisTask = noTrack ? undefined : (thisTaskSnap ?? task.completeness);
+                  const spiData = noTrack ? null : calcSPI(task);
+                  const isBehind = spiData !== null && spiData.spi < 1.0;
 
                   const statusColors: Record<TaskStatus, 'default' | 'primary' | 'warning' | 'success' | 'error' | 'secondary'> = {
                     BACKLOG: 'default', TODO: 'primary', IN_PROGRESS: 'primary',
@@ -1431,7 +1437,10 @@ const WeeklyReportPage: React.FC = () => {
 
                   return (
                     <React.Fragment key={task.id}>
-                      <TableRow sx={{ '& td': { borderTop: '2px solid', borderTopColor: 'divider' } }}>
+                      <TableRow sx={{
+                        '& td': { borderTop: '2px solid', borderTopColor: 'divider' },
+                        ...(isBehind ? { bgcolor: (theme: any) => `${theme.palette.error.main}14`, '&:hover': { bgcolor: (theme: any) => `${theme.palette.error.main}22` } } : {}),
+                      }}>
                         <TableCell>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                             <Box>
@@ -1484,6 +1493,7 @@ const WeeklyReportPage: React.FC = () => {
                             ? <Typography variant="caption" color="text.disabled">—</Typography>
                             : renderCompleteness(thisTask, thisTaskSnap === undefined && thisTask !== undefined)}
                         </TableCell>
+                        <TableCell>{spiData ? renderSPI(spiData) : null}</TableCell>
                         <TableCell>
                           <Chip label={statusLabels[task.status]} size="small"
                             color={statusColors[task.status]} variant="outlined" />
@@ -1505,7 +1515,7 @@ const WeeklyReportPage: React.FC = () => {
                         const thisOut = thisOutSnap ?? (output.completeness ? parseInt(output.completeness) : undefined);
                         const otMeta = outputTypes.find(t => t.id === output.outputTypeId);
                         return (
-                          <TableRow key={output.id} sx={{ bgcolor: 'action.hover' }}>
+                          <TableRow key={output.id} sx={{ bgcolor: isBehind ? (theme: any) => `${theme.palette.error.main}14` : 'action.hover' }}>
                             <TableCell sx={{ pl: 4 }}>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
                                 <Typography variant="caption">↳ {output.name}</Typography>
@@ -1530,6 +1540,7 @@ const WeeklyReportPage: React.FC = () => {
                             <TableCell>
                               {renderCompleteness(thisOut, thisOutSnap === undefined && thisOut !== undefined)}
                             </TableCell>
+                            <TableCell />
                             <TableCell />
                             <TableCell />
                           </TableRow>

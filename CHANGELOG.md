@@ -4,6 +4,17 @@
 
 ---
 
+## [Unreleased] — 2026-03-11 (e)
+
+### 改善 (Improvements)
+
+- **週報：本期無進展任務新增 SPI 時程績效 highlight**
+  - UI 表格新增「時程績效 SPI」欄位，SPI < 1.0（進度落後）的列以紅色底色 highlight，避免 review 時遺漏
+  - AsciiDoc 輸出同步新增 SPI 欄位，落後任務以紅色文字標記（與有進展表格一致的 `fmtSpiCell` 格式）
+  - 產出子列也會繼承父任務的 highlight 底色
+
+---
+
 ## [Unreleased] — 2026-03-11 (d)
 
 ### 修正 (Fixes)
