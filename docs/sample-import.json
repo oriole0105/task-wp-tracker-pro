@@ -1,0 +1,37 @@
+{
+  "tasks": [
+    {
+      "title": "新功能開發：使用者通知系統",
+      "aliasTitle": "通知系統",
+      "description": "設計並實作前後端使用者通知機制，涵蓋 Email 與站內訊息兩種管道。",
+      "mainCategory": "Development",
+      "labels": ["前端", "後端", "新功能"],
+      "showInWbs": true,
+      "showInReport": true,
+      "trackCompleteness": true,
+      "status": "TODO",
+      "children": [
+        {
+          "title": "需求分析與 UI 設計",
+          "description": "整理通知類型清單，與設計師確認元件樣式，產出 Figma 稿。",
+          "mainCategory": "Development",
+          "labels": ["前端", "設計"],
+          "showInWbs": true,
+          "showInReport": true,
+          "trackCompleteness": true,
+          "status": "TODO"
+        },
+        {
+          "title": "後端 API 與資料庫設計",
+          "description": "設計通知資料表結構，實作 REST API（建立、查詢、標記已讀、刪除），並整合 Email 發送服務。",
+          "mainCategory": "Development",
+          "labels": ["後端"],
+          "showInWbs": true,
+          "showInReport": true,
+          "trackCompleteness": true,
+          "status": "TODO"
+        }
+      ]
+    }
+  ]
+}

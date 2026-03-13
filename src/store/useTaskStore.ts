@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import { format, startOfWeek } from 'date-fns';
-import type { Task, CategoryData, WorkOutput, Timeslot, OutputType, WeeklySnapshot, Member, GanttDisplayMode } from '../types';
+import type { Task, CategoryData, WorkOutput, Timeslot, OutputType, WeeklySnapshot, Member, GanttDisplayMode, JsonImportTask } from '../types';
 import { getAllDescendantIds, propagateStatusToAncestors, type StatusChangeInfo } from '../utils/taskHierarchy';
 
 const getCurrentWeekStart = (): string =>
@@ -54,6 +54,8 @@ interface TaskState {
   addTask: (task: Omit<Task, 'id'>) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
+  duplicateTask: (sourceTaskId: string) => void;
+  importTasksFromJson: (jsonTasks: JsonImportTask[], parentId?: string) => void;
 
   // Timeslot Actions
   addTimeslot: (data: Omit<Timeslot, 'id'>) => void;
@@ -136,6 +138,61 @@ export const useTaskStore = create<TaskState>()(
         set((state) => ({
           _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
           tasks: [...state.tasks, newTask],
+        }));
+      },
+
+      duplicateTask: (sourceTaskId) => {
+        const source = get().tasks.find(t => t.id === sourceTaskId);
+        if (!source) return;
+        get().addTask({
+          title: `${source.title}（副本）`,
+          aliasTitle: source.aliasTitle,
+          description: source.description,
+          mainCategory: source.mainCategory,
+          assignee: source.assignee,
+          reporter: source.reporter,
+          labels: [...(source.labels ?? [])],
+          showInWbs: source.showInWbs ?? true,
+          ganttDisplayMode: source.ganttDisplayMode ?? 'bar',
+          showInReport: source.showInReport !== false,
+          trackCompleteness: source.trackCompleteness !== false,
+          parentId: source.parentId,
+          status: 'TODO',
+          outputs: [],
+        });
+      },
+
+      importTasksFromJson: (jsonTasks, parentId) => {
+        const flatTasks: Task[] = [];
+        const flatten = (items: JsonImportTask[], pid?: string) => {
+          for (const item of items) {
+            const id = uuidv4();
+            flatTasks.push({
+              id,
+              title: item.title,
+              aliasTitle: item.aliasTitle ?? '',
+              description: item.description ?? '',
+              mainCategory: item.mainCategory ?? '',
+              assignee: item.assignee ?? '',
+              reporter: item.reporter ?? '',
+              labels: [...(item.labels ?? [])],
+              showInWbs: item.showInWbs ?? true,
+              ganttDisplayMode: item.ganttDisplayMode ?? 'bar',
+              showInReport: item.showInReport ?? true,
+              trackCompleteness: item.trackCompleteness ?? true,
+              parentId: pid,
+              status: item.status ?? 'TODO',
+              outputs: [],
+            });
+            if (item.children?.length) {
+              flatten(item.children, id);
+            }
+          }
+        };
+        flatten(jsonTasks, parentId);
+        set((state) => ({
+          _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
+          tasks: [...state.tasks, ...flatTasks],
         }));
       },
 

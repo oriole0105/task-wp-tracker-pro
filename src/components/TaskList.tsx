@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Box, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Button, IconButton, Chip, FormControl, InputLabel, Select, MenuItem, Checkbox, ListItemText,
@@ -7,7 +7,7 @@ import {
   Snackbar, Alert, Tooltip,
 } from '@mui/material';
 import {
-  Edit, Delete, Add, SubdirectoryArrowRight,
+  Edit, Delete, Add, SubdirectoryArrowRight, ContentCopy, FileUpload, AccountTree,
   FilterListOff, SelectAll, EventAvailable, EventBusy,
   KeyboardArrowDown, KeyboardArrowRight, KeyboardArrowLeft, UnfoldLess, UnfoldMore, EventNote,
   Search, WarningAmber, Archive, Inventory, ArrowUpward, ArrowDownward,
@@ -15,10 +15,11 @@ import {
 import { Link as RouterLink } from 'react-router-dom';
 import { DatePicker } from '@mui/x-date-pickers';
 import { useTaskStore } from '../store/useTaskStore';
-import type { Task, TaskStatus } from '../types';
+import type { Task, TaskStatus, JsonImportTask } from '../types';
 import { TaskForm } from './TaskForm';
 import { format } from 'date-fns';
 import { getTaskActualStart, getTaskActualEnd } from '../utils/taskDateUtils';
+import { computeTaskWbsMap } from '../utils/wbs';
 
 const formatTime = (ms: number) => {
   const seconds = Math.floor((ms / 1000) % 60);
@@ -44,7 +45,7 @@ interface IndexedTask extends Task {
 }
 
 export const TaskList: React.FC = () => {
-  const { tasks, timeslots, mainCategories, deleteTask, archiveTask, archiveAllDone, undo, reorderTask } = useTaskStore();
+  const { tasks, timeslots, mainCategories, deleteTask, duplicateTask, archiveTask, archiveAllDone, undo, reorderTask, importTasksFromJson } = useTaskStore();
 
   const [filterStatus, setFilterStatus] = useState<TaskStatus[]>(['BACKLOG', 'TODO', 'IN_PROGRESS', 'PAUSED']);
   const [selectedMainCats, setSelectedMainCats] = useState<string[]>([]);
@@ -69,6 +70,12 @@ export const TaskList: React.FC = () => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMsg, setSnackbarMsg] = useState('');
 
+  // JSON 匯入狀態
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importJsonTasks, setImportJsonTasks] = useState<JsonImportTask[]>([]);
+  const [importParentId, setImportParentId] = useState<string>('');
+
   // 預先計算每個任務的累計工時
   const taskTotalTimeMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -80,6 +87,51 @@ export const TaskList: React.FC = () => {
     });
     return map;
   }, [timeslots]);
+
+  // WBS 供父任務下拉使用
+  const { wbsNumbers: importWbsNumbers, sorted: importWbsSorted } = useMemo(
+    () => computeTaskWbsMap(tasks.filter(t => !t.archived)),
+    [tasks]
+  );
+
+  // 計算要匯入的任務總數（含子任務，遞迴）
+  const countImportTasks = (items: JsonImportTask[]): number =>
+    items.reduce((acc, t) => acc + 1 + countImportTasks(t.children ?? []), 0);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const json = JSON.parse(ev.target?.result as string);
+        const taskArray: JsonImportTask[] = Array.isArray(json) ? json : json.tasks;
+        if (!Array.isArray(taskArray) || taskArray.length === 0) {
+          setSnackbarMsg('JSON 格式錯誤：需要 tasks 陣列或頂層陣列');
+          setSnackbarOpen(true);
+          return;
+        }
+        setImportJsonTasks(taskArray);
+        setImportParentId('');
+        setImportDialogOpen(true);
+      } catch {
+        setSnackbarMsg('解析 JSON 失敗，請確認檔案格式正確');
+        setSnackbarOpen(true);
+      } finally {
+        // 重設 input，讓同一檔案可再次選取
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImportConfirm = () => {
+    importTasksFromJson(importJsonTasks, importParentId || undefined);
+    setImportDialogOpen(false);
+    const total = countImportTasks(importJsonTasks);
+    setSnackbarMsg(`已匯入 ${total} 個任務`);
+    setSnackbarOpen(true);
+  };
 
   const toggleCollapse = (id: string) => {
     const newCollapsed = new Set(collapsedTaskIds);
@@ -283,7 +335,9 @@ export const TaskList: React.FC = () => {
               </Button>
             </span>
           </Tooltip>
+          <Button variant="outlined" size="small" startIcon={<FileUpload />} onClick={() => fileInputRef.current?.click()}>匯入 JSON</Button>
           <Button variant="contained" size="small" startIcon={<Add />} onClick={() => { setEditingTask(undefined); setParentTaskId(undefined); setIsFormOpen(true); }}>建立任務</Button>
+          <input ref={fileInputRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={handleFileChange} />
         </Box>
       </Box>
 
@@ -436,6 +490,9 @@ export const TaskList: React.FC = () => {
                       );
                     })()}
                     <IconButton size="small" onClick={() => { setEditingTask(task); setParentTaskId(undefined); setIsFormOpen(true); }}><Edit fontSize="small" /></IconButton>
+                    <Tooltip title="複製任務">
+                      <IconButton size="small" onClick={() => duplicateTask(task.id)}><ContentCopy fontSize="small" /></IconButton>
+                    </Tooltip>
                     {task.depth < 5 ? (
                       <IconButton size="small" onClick={() => { setEditingTask(undefined); setParentTaskId(task.id); setIsFormOpen(true); }} title="建立子任務"><SubdirectoryArrowRight fontSize="small" /></IconButton>
                     ) : <IconButton size="small" disabled><SubdirectoryArrowRight fontSize="small" sx={{ opacity: 0.1 }} /></IconButton>}
@@ -456,6 +513,54 @@ export const TaskList: React.FC = () => {
       </TableContainer>
 
       <TaskForm open={isFormOpen} onClose={() => setIsFormOpen(false)} initialData={editingTask} parentId={parentTaskId} />
+
+      {/* JSON 匯入 Dialog */}
+      <Dialog open={importDialogOpen} onClose={() => setImportDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>匯入任務 JSON</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+          <DialogContentText>
+            共 <strong>{countImportTasks(importJsonTasks)}</strong> 個任務（含子任務）將被匯入。
+            請選擇要掛在哪個父任務下，留空則放在最上層。
+          </DialogContentText>
+          <FormControl fullWidth size="small">
+            <InputLabel>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <AccountTree sx={{ fontSize: 16 }} /> 上層任務（留空 = 最上層）
+              </Box>
+            </InputLabel>
+            <Select
+              value={importParentId}
+              onChange={(e) => setImportParentId(e.target.value)}
+              label="上層任務（留空 = 最上層）"
+            >
+              <MenuItem value=""><em>最上層（無父任務）</em></MenuItem>
+              {importWbsSorted.map((task) => {
+                const wbs = importWbsNumbers.get(task.id);
+                const depth = wbs ? wbs.split('.').length - 1 : 0;
+                return (
+                  <MenuItem key={task.id} value={task.id} sx={{ pl: 2 + depth * 2 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ mr: 1, fontFamily: 'monospace' }}>{wbs}</Typography>
+                    {task.title}
+                  </MenuItem>
+                );
+              })}
+            </Select>
+          </FormControl>
+          <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, p: 1.5, maxHeight: 200, overflowY: 'auto' }}>
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>預覽（前 10 個）</Typography>
+            {importJsonTasks.slice(0, 10).map((t, i) => (
+              <Typography key={i} variant="body2">・{t.title}{t.children?.length ? ` (含 ${t.children.length} 個子任務)` : ''}</Typography>
+            ))}
+            {importJsonTasks.length > 10 && (
+              <Typography variant="caption" color="text.secondary">…等共 {importJsonTasks.length} 個頂層任務</Typography>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setImportDialogOpen(false)}>取消</Button>
+          <Button variant="contained" startIcon={<FileUpload />} onClick={handleImportConfirm}>確認匯入</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!taskToDelete} onClose={() => setTaskToDelete(null)} maxWidth="xs" fullWidth>

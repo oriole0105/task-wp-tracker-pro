@@ -14,6 +14,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Task, TaskStatus, WorkOutput, WeeklySnapshot } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { getTaskActualStart, getTaskActualEnd } from '../utils/taskDateUtils';
+import { computeTaskWbsMap } from '../utils/wbs';
 
 const CHART_COLORS = ['#1976d2', '#e91e63', '#4caf50', '#ff9800', '#9c27b0', '#00bcd4', '#795548'];
 
@@ -99,14 +100,20 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
     return tasks.some(t => t.parentId === initialData.id);
   }, [tasks, initialData]);
 
-  // Filter tasks that can be valid parents
-  const validParentCandidates = useMemo(() => {
-    if (!initialData) return tasks;
-    const descendants = getDescendantIds(initialData.id);
-    return tasks.filter(t =>
-      t.id !== initialData.id &&
-      !descendants.includes(t.id)
-    );
+  // Filter tasks that can be valid parents, with WBS ordering
+  const { validParentCandidates, parentWbsNumbers } = useMemo(() => {
+    const { wbsNumbers, sorted } = computeTaskWbsMap(tasks);
+    let candidates: Task[];
+    if (!initialData) {
+      candidates = sorted;
+    } else {
+      const descendants = getDescendantIds(initialData.id);
+      candidates = sorted.filter(t =>
+        t.id !== initialData.id &&
+        !descendants.includes(t.id)
+      );
+    }
+    return { validParentCandidates: candidates, parentWbsNumbers: wbsNumbers };
   }, [tasks, initialData]);
 
   useEffect(() => {
@@ -347,23 +354,39 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
 
           {/* Parent Task Selector */}
           <Grid size={{ xs: 12 }}>
-            <FormControl fullWidth size="small">
-              <InputLabel sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <AccountTree sx={{ fontSize: 18 }} /> 上層任務 (WBS 歸類)
-              </InputLabel>
-              <Select
-                value={currentParentId}
-                label="上層任務 (WBS 歸類)"
-                onChange={(e) => setCurrentParentId(e.target.value)}
-              >
-                <MenuItem value=""><em>無 (設為第一階任務)</em></MenuItem>
-                {validParentCandidates.map((t) => (
-                  <MenuItem key={t.id} value={t.id}>
-                    {t.title} {t.aliasTitle ? `(${t.aliasTitle})` : ''}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Autocomplete
+              size="small"
+              options={validParentCandidates}
+              value={validParentCandidates.find(t => t.id === currentParentId) ?? null}
+              onChange={(_, task) => setCurrentParentId(task ? task.id : '')}
+              getOptionLabel={(task) => {
+                const wbs = parentWbsNumbers.get(task.id);
+                return wbs ? `${wbs}  ${task.title}` : task.title;
+              }}
+              renderOption={(props, task) => {
+                const wbs = parentWbsNumbers.get(task.id);
+                const depth = wbs ? wbs.split('.').length - 1 : 0;
+                return (
+                  <li {...props} key={task.id}>
+                    <Box sx={{ pl: depth * 2 }}>
+                      <Typography variant="body2" component="span" color="textSecondary" sx={{ mr: 1, fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                        {wbs}
+                      </Typography>
+                      {task.title}
+                    </Box>
+                  </li>
+                );
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label={<Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><AccountTree sx={{ fontSize: 18 }} /> 上層任務 (WBS 歸類)</Box>}
+                  placeholder="無（設為第一階任務）"
+                />
+              )}
+              clearOnEscape
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+            />
           </Grid>
 
           <Grid size={{ xs: 12 }}>

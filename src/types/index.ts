@@ -82,6 +82,23 @@ export interface Task {
   archivedAt?: number;
 }
 
+/** JSON 批次匯入的任務格式（樹狀結構，children 為子任務） */
+export interface JsonImportTask {
+  title: string;
+  aliasTitle?: string;
+  description?: string;
+  mainCategory?: string;
+  assignee?: string;
+  reporter?: string;
+  labels?: string[];
+  showInWbs?: boolean;
+  showInReport?: boolean;
+  trackCompleteness?: boolean;
+  ganttDisplayMode?: GanttDisplayMode;
+  status?: TaskStatus;
+  children?: JsonImportTask[];
+}
+
 export interface CategoryData {
   mainCategories: string[];
   subCategories: string[];

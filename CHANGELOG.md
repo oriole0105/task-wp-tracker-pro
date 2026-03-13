@@ -4,6 +4,31 @@
 
 ---
 
+## [Unreleased] — 2026-03-14
+
+### 新功能 (Features)
+
+- **任務複製功能**
+  - 任務列表每列新增「複製任務」按鈕（`ContentCopy` 圖示）
+  - 靜默複製：不開 TaskForm，直接建立副本並加上「（副本）」後綴
+  - 複製欄位：標題、別名、說明、主分類、指派人/報告人、標籤、WBS 顯示、甘特模式、週報顯示、追蹤完成度、父任務（同層）
+  - 重設欄位：status → `TODO`、completeness 清空、日期清空、outputs 清空
+  - 支援 Undo 還原
+
+- **JSON 批次匯入任務**
+  - 任務管理頁面工具列新增「匯入 JSON」按鈕
+  - 支援兩種格式：`{ "tasks": [...] }` 或頂層直接為陣列
+  - 任務可用 `children` 欄位定義子任務（支援多層巢狀）
+  - 匯入前彈出確認 Dialog，可選擇目標父任務（WBS 下拉，留空 = 最上層）並預覽任務清單
+  - 單次 `set` 批次寫入，支援 Undo 還原
+  - 新增範例檔 `docs/sample-import.json`（主任務 + 2 個子任務）
+
+- **TaskForm 父任務下拉改為 Autocomplete + WBS 排序**
+  - 原 `<Select>` 改為 MUI `<Autocomplete>`，支援關鍵字搜尋父任務
+  - 選項依 WBS 編號排序，顯示縮排層級與 WBS 編號前綴
+
+---
+
 ## [Unreleased] — 2026-03-13 (c)
 
 ### 新功能 (Features)
