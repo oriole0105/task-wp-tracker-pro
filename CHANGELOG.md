@@ -4,6 +4,44 @@
 
 ---
 
+## [Unreleased] — 2026-03-13 (c)
+
+### 新功能 (Features)
+
+- **使用者手冊頁面**
+  - AppBar 右側新增 `?` 圖示按鈕，點擊導航至 `/help`
+  - 以 `react-markdown` + `remark-gfm` 渲染 `USER_MANUAL_modify.md`，支援標題、表格、程式碼區塊、引言等全部 Markdown 元素
+  - 所有排版元素套用 MUI 樣式，深色/亮色主題自動切換
+  - 日後只需更新 Markdown 檔案，頁面內容即自動同步，無需改程式碼
+
+---
+
+## [Unreleased] — 2026-03-13 (b)
+
+### 新功能 (Features)
+
+- **甘特圖：依主類別分組改為可選開關（預設關閉）**
+  - WeeklyReportPage 甘特圖選項區新增「依主類別分組」Switch
+  - 開啟時：任務依 `mainCategory` 自動加上 `-- 分類名稱 --` 分隔標題（舊有行為）
+  - 關閉時（預設）：任務直接逐一渲染，不加分類分隔，與 `section` 章節標題任務共用同一層級
+
+---
+
+## [Unreleased] — 2026-03-13 (a)
+
+### 新功能 (Features)
+
+- **任務甘特圖顯示方式三態設定**
+  - `Task.showInGantt: boolean` 升級為 `Task.ganttDisplayMode: GanttDisplayMode`，三個選項：
+    - `bar`（進度列）：顯示為有完成度百分比的甘特進度列（原有行為）
+    - `section`（章節標題）：渲染為 PlantUML `-- 任務名稱 --` 分隔行，適合跨週期的大型父任務
+    - `hidden`（不顯示）：不出現在甘特圖中
+  - TaskForm「顯示於甘特圖」Checkbox 改為三選一 RadioGroup
+  - 舊資料自動 migrate：`showInGantt: true → bar`、`showInGantt: false → hidden`（persist version 升至 1）
+  - 新任務預設 `bar`
+
+---
+
 ## [Unreleased] — 2026-03-12 (b)
 
 ### 新功能 (Features)

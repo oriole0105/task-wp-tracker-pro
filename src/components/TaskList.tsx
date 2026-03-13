@@ -18,6 +18,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import type { Task, TaskStatus } from '../types';
 import { TaskForm } from './TaskForm';
 import { format } from 'date-fns';
+import { getTaskActualStart, getTaskActualEnd } from '../utils/taskDateUtils';
 
 const formatTime = (ms: number) => {
   const seconds = Math.floor((ms / 1000) % 60);
@@ -144,13 +145,10 @@ export const TaskList: React.FC = () => {
   }, [tasks, filterStatus, selectedMainCats, selectedLabels, dateRange, collapsedTaskIds, searchQuery]);
 
   const getActualDates = (task: Task) => {
-    const logs = timeslots.filter(ts => ts.taskId === task.id);
-    if (logs.length === 0) return { start: undefined, end: undefined };
-    const start = Math.min(...logs.map(l => l.startTime));
-    let end = undefined;
+    const start = getTaskActualStart(task.id, tasks, timeslots);
+    let end: number | undefined = undefined;
     if (task.status === 'DONE') {
-      const endedLogs = logs.filter(l => l.endTime);
-      if (endedLogs.length > 0) end = Math.max(...endedLogs.map(l => l.endTime!));
+      end = getTaskActualEnd(task.id, tasks, timeslots);
     }
     return { start, end };
   };

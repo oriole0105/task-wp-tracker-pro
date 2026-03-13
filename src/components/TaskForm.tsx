@@ -3,7 +3,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, FormControl, InputLabel, Select, MenuItem,
   Grid, Box, Typography, IconButton, Paper, Divider, Chip,
-  FormControlLabel, Checkbox, Collapse, Tooltip
+  FormControlLabel, Checkbox, Collapse, Tooltip, Radio, RadioGroup, FormLabel
 } from '@mui/material';
 import Autocomplete from '@mui/material/Autocomplete';
 import { Add, Delete, ContentCopy, Link as LinkIcon, Label as LabelIcon, AccountTree, InfoOutlined, ExpandMore, ExpandLess } from '@mui/icons-material';
@@ -13,6 +13,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, 
 import { v4 as uuidv4 } from 'uuid';
 import type { Task, TaskStatus, WorkOutput, WeeklySnapshot } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
+import { getTaskActualStart, getTaskActualEnd } from '../utils/taskDateUtils';
 
 const CHART_COLORS = ['#1976d2', '#e91e63', '#4caf50', '#ff9800', '#9c27b0', '#00bcd4', '#795548'];
 
@@ -38,7 +39,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
   const [status, setStatus] = useState<TaskStatus>('TODO');
   const [completeness, setCompleteness] = useState<number | ''>('');
   const [showInWbs, setShowInWbs] = useState(true);
-  const [showInGantt, setShowInGantt] = useState(true);
+  const [ganttDisplayMode, setGanttDisplayMode] = useState<'bar' | 'section' | 'hidden'>('bar');
   const [showInReport, setShowInReport] = useState(true);
   const [dateError, setDateError] = useState(false);
   const [outputs, setOutputs] = useState<WorkOutput[]>([]);
@@ -92,6 +93,12 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
     return ids;
   };
 
+  // 判斷此任務是否有子任務
+  const hasChildren = useMemo(() => {
+    if (!initialData) return false;
+    return tasks.some(t => t.parentId === initialData.id);
+  }, [tasks, initialData]);
+
   // Filter tasks that can be valid parents
   const validParentCandidates = useMemo(() => {
     if (!initialData) return tasks;
@@ -117,7 +124,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setPauseReason(initialData.pauseReason || '');
       setTrackCompleteness(initialData.trackCompleteness !== false);
       setShowInWbs(initialData.showInWbs !== undefined ? initialData.showInWbs : true);
-      setShowInGantt(initialData.showInGantt !== undefined ? initialData.showInGantt : true);
+      setGanttDisplayMode(initialData.ganttDisplayMode ?? 'bar');
       setShowInReport(initialData.showInReport !== false);
       setOutputs(initialData.outputs || []);
       setLabels(initialData.labels || []);
@@ -138,7 +145,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setPauseReason('');
       setTrackCompleteness(true);
       setShowInWbs(true);
-      setShowInGantt(true);
+      setGanttDisplayMode('bar');
       setShowInReport(true);
       setOutputs([]);
       setLabels([]);
@@ -158,7 +165,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setPauseReason('');
       setTrackCompleteness(true);
       setShowInWbs(true);
-      setShowInGantt(true);
+      setGanttDisplayMode('bar');
       setShowInReport(true);
       setOutputs([]);
       setLabels([]);
@@ -175,16 +182,14 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
     setNewOutputSnap({});
   }, [initialData, parentId, open, getTaskById, members]);
 
-  // 實際開始日/完成日：從 timeslots 動態計算，不儲存於 Task
+  // 實際開始日/完成日：從 timeslots 動態計算（含所有後代任務），不儲存於 Task
   const computedActualDates = useMemo(() => {
     if (!initialData) return null;
-    const taskTs = timeslots.filter(ts => ts.taskId === initialData.id);
-    if (taskTs.length === 0) return null;
-    const actualStart = Math.min(...taskTs.map(ts => ts.startTime));
-    const endedTs = taskTs.filter(ts => ts.endTime);
-    const actualEnd = endedTs.length > 0 ? Math.max(...endedTs.map(ts => ts.endTime!)) : undefined;
+    const actualStart = getTaskActualStart(initialData.id, tasks, timeslots);
+    if (actualStart === undefined) return null;
+    const actualEnd = getTaskActualEnd(initialData.id, tasks, timeslots);
     return { start: actualStart, end: actualEnd };
-  }, [initialData, timeslots]);
+  }, [initialData, tasks, timeslots]);
 
   // --- Label handlers ---
   const handleAddLabel = () => {
@@ -279,7 +284,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
   };
 
   const handleSubmit = () => {
-    if (showInGantt && (!estimatedStartDate || !estimatedEndDate)) {
+    if (ganttDisplayMode !== 'hidden' && (!estimatedStartDate || !estimatedEndDate)) {
       setDateError(true);
       return;
     }
@@ -302,7 +307,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       completeness: completeness === '' ? undefined : completeness,
       pauseReason: status === 'PAUSED' ? pauseReason : undefined,
       showInWbs,
-      showInGantt,
+      ganttDisplayMode,
       showInReport,
       trackCompleteness,
       outputs,
@@ -409,6 +414,11 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
                 <MenuItem value="DONE">已完成 (Done)</MenuItem>
                 <MenuItem value="CANCELLED">已取消 (Cancelled)</MenuItem>
               </Select>
+              {hasChildren && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, ml: 1.5 }}>
+                  此任務有子任務，狀態會在子任務變動時自動更新
+                </Typography>
+              )}
             </FormControl>
           </Grid>
 
@@ -434,28 +444,28 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
 
           <Grid size={{ xs: 12, md: 6 }}>
             <DatePicker
-              label={showInGantt ? '預估開始日期 *' : '預估開始日期'}
+              label={ganttDisplayMode !== 'hidden' ? '預估開始日期 *' : '預估開始日期'}
               value={estimatedStartDate}
               onChange={(newValue) => { setEstimatedStartDate(newValue); if (newValue) setDateError(false); }}
               slotProps={{
                 textField: {
                   fullWidth: true,
-                  error: dateError && showInGantt && !estimatedStartDate,
-                  helperText: dateError && showInGantt && !estimatedStartDate ? '顯示於甘特圖時為必填' : undefined,
+                  error: dateError && ganttDisplayMode !== 'hidden' && !estimatedStartDate,
+                  helperText: dateError && ganttDisplayMode !== 'hidden' && !estimatedStartDate ? '顯示於甘特圖時為必填' : undefined,
                 },
               }}
             />
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
             <DatePicker
-              label={showInGantt ? '預估完成日期 *' : '預估完成日期'}
+              label={ganttDisplayMode !== 'hidden' ? '預估完成日期 *' : '預估完成日期'}
               value={estimatedEndDate}
               onChange={(newValue) => { setEstimatedEndDate(newValue); if (newValue) setDateError(false); }}
               slotProps={{
                 textField: {
                   fullWidth: true,
-                  error: dateError && showInGantt && !estimatedEndDate,
-                  helperText: dateError && showInGantt && !estimatedEndDate ? '顯示於甘特圖時為必填' : undefined,
+                  error: dateError && ganttDisplayMode !== 'hidden' && !estimatedEndDate,
+                  helperText: dateError && ganttDisplayMode !== 'hidden' && !estimatedEndDate ? '顯示於甘特圖時為必填' : undefined,
                 },
               }}
             />
@@ -534,13 +544,23 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
               label="顯示於 WBS"
             />
             <FormControlLabel
-              control={<Checkbox checked={showInGantt} onChange={(e) => setShowInGantt(e.target.checked)} />}
-              label="顯示於甘特圖"
-            />
-            <FormControlLabel
               control={<Checkbox checked={showInReport} onChange={(e) => setShowInReport(e.target.checked)} />}
               label="顯示於週報進度表"
             />
+          </Grid>
+          <Grid size={{ xs: 12 }}>
+            <FormControl component="fieldset" sx={{ ml: 1 }}>
+              <FormLabel component="legend" sx={{ fontSize: '0.875rem' }}>甘特圖顯示方式</FormLabel>
+              <RadioGroup
+                row
+                value={ganttDisplayMode}
+                onChange={(e) => setGanttDisplayMode(e.target.value as 'bar' | 'section' | 'hidden')}
+              >
+                <FormControlLabel value="bar" control={<Radio size="small" />} label="進度列" />
+                <FormControlLabel value="section" control={<Radio size="small" />} label="章節標題" />
+                <FormControlLabel value="hidden" control={<Radio size="small" />} label="不顯示" />
+              </RadioGroup>
+            </FormControl>
           </Grid>
 
           {/* 任務完成度歷史快照（僅編輯模式，且追蹤完成度時顯示） */}

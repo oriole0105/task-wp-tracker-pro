@@ -1,5 +1,7 @@
 export type TaskStatus = 'BACKLOG' | 'TODO' | 'IN_PROGRESS' | 'PAUSED' | 'DONE' | 'CANCELLED';
 
+export type GanttDisplayMode = 'bar' | 'section' | 'hidden';
+
 /**
  * @deprecated Use Timeslot instead. Kept for migration script compatibility.
  */
@@ -73,7 +75,7 @@ export interface Task {
   outputs: WorkOutput[];
   labels: string[];
   showInWbs: boolean;
-  showInGantt: boolean;
+  ganttDisplayMode: GanttDisplayMode;
   showInReport?: boolean; // 顯示於週報進度表，預設 true；固定會議等可設為 false
   trackCompleteness?: boolean; // 預設 true；週期型/持續型任務設 false，不追蹤完成度 %
   archived?: boolean;

@@ -15,6 +15,7 @@ import { startOfDay, endOfDay, addDays, addMonths, subMonths, subDays, subWeeks,
 import plantumlEncoder from 'plantuml-encoder';
 import { v4 as uuidv4 } from 'uuid';
 import type { Task, TaskStatus, WeeklySnapshot, WorkOutput } from '../types';
+import { getTaskActualStart, getTaskActualEnd } from '../utils/taskDateUtils';
 
 const WeeklyReportPage: React.FC = () => {
   const { tasks, timeslots, mainCategories, holidays, outputTypes, updateTask, updateTaskWeeklyNote } = useTaskStore();
@@ -252,6 +253,7 @@ const WeeklyReportPage: React.FC = () => {
 
   // --- Gantt Options ---
   const [showTodayMark, setShowTodayMark] = useState(true);
+  const [groupByCategory, setGroupByCategory] = useState(false);
   const [ganttMode, setGanttMode] = useState<'weekly' | 'workReview'>('weekly');
   const [ganttScale, setGanttScale] = useState<'daily' | 'weekly' | 'monthly'>('daily');
   const [ganttZoom, setGanttZoom] = useState(1);
@@ -287,7 +289,7 @@ const WeeklyReportPage: React.FC = () => {
     const startTs = ganttRange.start.getTime();
     const endTs = ganttRange.end.getTime();
     return tasks.filter(task => {
-      if (task.showInGantt === false) return false;
+      if (task.ganttDisplayMode === 'hidden') return false;
       const depth = getTaskDepth(task);
       if (!selectedLevels.includes(depth)) return false;
       const hasEstimatedInRange = task.estimatedStartDate && task.estimatedStartDate <= endTs &&
@@ -527,60 +529,68 @@ const WeeklyReportPage: React.FC = () => {
       .forEach(d => { source += `${d} is colored in lightblue\n`; });
     source += '\n';
 
-    const mainCats = Array.from(new Set(ganttActiveTasks.map(t => t.mainCategory || '其他')));
+    const renderTask = (task: Task) => {
+      // 章節標題模式：渲染為分隔線
+      if (task.ganttDisplayMode === 'section') {
+        const cleanTitle = task.title.replace(/[[\]]/g, '');
+        source += `-- ${cleanTitle} --\n`;
+        return;
+      }
 
-    mainCats.forEach(mainCat => {
-      const catTasks = ganttActiveTasks.filter(t => (t.mainCategory || '其他') === mainCat);
-      if (catTasks.length === 0) return;
+      const actualStart = getTaskActualStart(task.id, tasks, timeslots);
+      const isDoneOrCancelled = task.status === 'DONE' || task.status === 'CANCELLED';
+      const actualEnd = isDoneOrCancelled ? getTaskActualEnd(task.id, tasks, timeslots) : undefined;
 
-      source += `-- ${mainCat} --\n`;
+      let finalStart: number | undefined;
+      let finalEnd: number | undefined;
 
-      catTasks.forEach(task => {
-        const taskTs = timeslots.filter(ts => ts.taskId === task.id);
-        const actualStart = taskTs.length > 0 ? Math.min(...taskTs.map(ts => ts.startTime)) : undefined;
-        const isDoneOrCancelled = task.status === 'DONE' || task.status === 'CANCELLED';
-        const actualEnd = isDoneOrCancelled && taskTs.length > 0
-          ? Math.max(...taskTs.filter(ts => ts.endTime).map(ts => ts.endTime!))
-          : undefined;
+      if (task.status === 'BACKLOG' || task.status === 'TODO') {
+        finalStart = task.estimatedStartDate;
+        finalEnd = task.estimatedEndDate;
+      } else if (task.status === 'IN_PROGRESS' || task.status === 'PAUSED') {
+        finalStart = actualStart ?? task.estimatedStartDate;
+        finalEnd = task.estimatedEndDate || Date.now() + 86400000;
+      } else if (isDoneOrCancelled) {
+        finalStart = actualStart ?? task.estimatedStartDate;
+        finalEnd = actualEnd ?? task.estimatedEndDate ?? Date.now();
+      }
 
-        let finalStart: number | undefined;
-        let finalEnd: number | undefined;
+      if (finalStart && finalEnd && isValid(finalStart) && isValid(finalEnd)) {
+        const startStr = format(finalStart, 'yyyy-MM-dd');
+        const endStr = format(finalEnd, 'yyyy-MM-dd');
+        const cleanTitle = task.title.replace(/[[\]]/g, '');
+        const completenessVal = task.completeness !== undefined ? task.completeness : (isDoneOrCancelled ? 100 : 0);
 
-        if (task.status === 'BACKLOG' || task.status === 'TODO') {
-          finalStart = task.estimatedStartDate;
-          finalEnd = task.estimatedEndDate;
-        } else if (task.status === 'IN_PROGRESS' || task.status === 'PAUSED') {
-          finalStart = actualStart ?? task.estimatedStartDate;
-          finalEnd = task.estimatedEndDate || Date.now() + 86400000;
-        } else if (isDoneOrCancelled) {
-          finalStart = actualStart ?? task.estimatedStartDate;
-          finalEnd = actualEnd ?? task.estimatedEndDate ?? Date.now();
+        source += `[${cleanTitle}] starts ${startStr} and ends ${endStr}\n`;
+        source += `[${cleanTitle}] is ${completenessVal}% completed\n`;
+
+        if (isDoneOrCancelled) {
+          source += `[${cleanTitle}] is colored in ${task.status === 'CANCELLED' ? 'Silver' : 'lightgreen'}\n`;
+        } else if (task.status === 'IN_PROGRESS') {
+          source += `[${cleanTitle}] is colored in deepskyblue\n`;
+        } else if (task.status === 'PAUSED') {
+          source += `[${cleanTitle}] is colored in Orange\n`;
         }
+      }
+    };
 
-        if (finalStart && finalEnd && isValid(finalStart) && isValid(finalEnd)) {
-          const startStr = format(finalStart, 'yyyy-MM-dd');
-          const endStr = format(finalEnd, 'yyyy-MM-dd');
-          const cleanTitle = task.title.replace(/[[\]]/g, '');
-          const completenessVal = task.completeness !== undefined ? task.completeness : (isDoneOrCancelled ? 100 : 0);
-
-          source += `[${cleanTitle}] starts ${startStr} and ends ${endStr}\n`;
-          source += `[${cleanTitle}] is ${completenessVal}% completed\n`;
-
-          if (isDoneOrCancelled) {
-            source += `[${cleanTitle}] is colored in ${task.status === 'CANCELLED' ? 'Silver' : 'lightgreen'}\n`;
-          } else if (task.status === 'IN_PROGRESS') {
-            source += `[${cleanTitle}] is colored in deepskyblue\n`;
-          } else if (task.status === 'PAUSED') {
-            source += `[${cleanTitle}] is colored in Orange\n`;
-          }
-        }
+    if (groupByCategory) {
+      const mainCats = Array.from(new Set(ganttActiveTasks.map(t => t.mainCategory || '其他')));
+      mainCats.forEach(mainCat => {
+        const catTasks = ganttActiveTasks.filter(t => (t.mainCategory || '其他') === mainCat);
+        if (catTasks.length === 0) return;
+        source += `-- ${mainCat} --\n`;
+        catTasks.forEach(renderTask);
+        source += `\n`;
       });
+    } else {
+      ganttActiveTasks.forEach(renderTask);
       source += `\n`;
-    });
+    }
 
     source += '@endgantt';
     return source;
-  }, [ganttActiveTasks, timeslots, ganttRange, showTodayMark, holidays, ganttScale, ganttZoom]);
+  }, [ganttActiveTasks, timeslots, ganttRange, showTodayMark, holidays, ganttScale, ganttZoom, groupByCategory]);
 
   const getPlantUMLUrl = (source: string) => {
     try { return `https://www.plantuml.com/plantuml/svg/${plantumlEncoder.encode(source)}`; } catch (e) { return ''; }
@@ -1193,6 +1203,10 @@ const WeeklyReportPage: React.FC = () => {
                   <Typography variant="caption" color="text.secondary">（半年報建議使用每週或每月）</Typography>
                 )}
               </Box>
+              <FormControlLabel
+                control={<Switch size="small" checked={groupByCategory} onChange={(e) => setGroupByCategory(e.target.checked)} />}
+                label={<Typography variant="body2">依主類別分組（開啟後任務依主類別加上分隔標題）</Typography>}
+              />
               <FormControlLabel
                 control={<Switch size="small" checked={showTodayMark} onChange={(e) => setShowTodayMark(e.target.checked)} />}
                 label={<Typography variant="body2">顯示今日標記（今日欄位以橘色 highlight）</Typography>}

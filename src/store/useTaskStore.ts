@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import { format, startOfWeek } from 'date-fns';
-import type { Task, CategoryData, WorkOutput, Timeslot, OutputType, WeeklySnapshot, Member } from '../types';
+import type { Task, CategoryData, WorkOutput, Timeslot, OutputType, WeeklySnapshot, Member, GanttDisplayMode } from '../types';
+import { getAllDescendantIds, propagateStatusToAncestors, type StatusChangeInfo } from '../utils/taskHierarchy';
 
 const getCurrentWeekStart = (): string =>
   format(startOfWeek(new Date(), { weekStartsOn: 0 }), 'yyyy-MM-dd');
@@ -102,6 +103,10 @@ interface TaskState {
 
   getTaskById: (id: string) => Task | undefined;
   getSubTasks: (parentId: string) => Task[];
+
+  // 最近一次自動狀態變更（供 UI 顯示 toast）
+  _lastAutoStatusChange: StatusChangeInfo | null;
+  clearLastAutoStatusChange: () => void;
 }
 
 export const useTaskStore = create<TaskState>()(
@@ -124,7 +129,7 @@ export const useTaskStore = create<TaskState>()(
           outputs: taskData.outputs ?? [],
           labels: taskData.labels ?? [],
           showInWbs: taskData.showInWbs ?? true,
-          showInGantt: taskData.showInGantt ?? true,
+          ganttDisplayMode: taskData.ganttDisplayMode ?? 'bar',
           showInReport: taskData.showInReport ?? true,
           trackCompleteness: taskData.trackCompleteness ?? true,
         };
@@ -135,9 +140,8 @@ export const useTaskStore = create<TaskState>()(
       },
 
       updateTask: (id, updates) => {
-        set((state) => ({
-          _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
-          tasks: state.tasks.map((t) => {
+        set((state) => {
+          let newTasks = state.tasks.map((t) => {
             if (t.id !== id) return t;
             const updated = { ...t, ...updates };
             // 僅在 trackCompleteness !== false 時自動建立快照
@@ -145,15 +149,32 @@ export const useTaskStore = create<TaskState>()(
               updated.weeklySnapshots = upsertSnapshot(t.weeklySnapshots, getCurrentWeekStart(), updates.completeness);
             }
             return updated;
-          }),
-        }));
+          });
+
+          // 狀態變更時，遞迴向上傳播父任務狀態
+          let autoChange: StatusChangeInfo | null = null;
+          if (updates.status !== undefined) {
+            const result = propagateStatusToAncestors(newTasks, id);
+            newTasks = result.tasks;
+            autoChange = result.lastChange;
+          }
+
+          return {
+            _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
+            tasks: newTasks,
+            ...(autoChange ? { _lastAutoStatusChange: autoChange } : {}),
+          };
+        });
       },
 
       deleteTask: (id) => {
-        set((state) => ({
-          _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
-          tasks: state.tasks.filter((t) => t.id !== id && t.parentId !== id),
-        }));
+        set((state) => {
+          const idsToDelete = new Set([id, ...getAllDescendantIds(state.tasks, id)]);
+          return {
+            _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
+            tasks: state.tasks.filter((t) => !idsToDelete.has(t.id)),
+          };
+        });
       },
 
       // Timeslot Actions
@@ -300,11 +321,7 @@ export const useTaskStore = create<TaskState>()(
             const prevSib = siblings[sibIdx - 1];
             const updatedTask = { ...task, parentId: prevSib.id };
             tasks.splice(idx, 1);
-            const getAllDescIds = (pid: string): string[] => {
-              const children = tasks.filter(t => t.parentId === pid);
-              return [pid, ...children.flatMap(c => getAllDescIds(c.id))];
-            };
-            const descIds = getAllDescIds(prevSib.id);
+            const descIds = [prevSib.id, ...getAllDescendantIds(tasks, prevSib.id)];
             let insertIdx = tasks.findIndex(t => t.id === prevSib.id);
             tasks.forEach((t, i) => { if (descIds.includes(t.id)) insertIdx = i; });
             tasks.splice(insertIdx + 1, 0, updatedTask);
@@ -315,13 +332,9 @@ export const useTaskStore = create<TaskState>()(
       },
 
       archiveTask: (id) => {
-        const getAllDescendantIds = (tasks: Task[], rootId: string): string[] => {
-          const children = tasks.filter(t => t.parentId === rootId);
-          return [rootId, ...children.flatMap(c => getAllDescendantIds(tasks, c.id))];
-        };
         const now = Date.now();
         set((state) => {
-          const ids = new Set(getAllDescendantIds(state.tasks, id));
+          const ids = new Set([id, ...getAllDescendantIds(state.tasks, id)]);
           return {
             _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
             tasks: state.tasks.map(t =>
@@ -332,12 +345,8 @@ export const useTaskStore = create<TaskState>()(
       },
 
       unarchiveTask: (id) => {
-        const getAllDescendantIds = (tasks: Task[], rootId: string): string[] => {
-          const children = tasks.filter(t => t.parentId === rootId);
-          return [rootId, ...children.flatMap(c => getAllDescendantIds(tasks, c.id))];
-        };
         set((state) => {
-          const ids = new Set(getAllDescendantIds(state.tasks, id));
+          const ids = new Set([id, ...getAllDescendantIds(state.tasks, id)]);
           return {
             _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
             tasks: state.tasks.map(t =>
@@ -350,15 +359,11 @@ export const useTaskStore = create<TaskState>()(
       archiveAllDone: () => {
         const now = Date.now();
         set((state) => {
-          const doneIds = new Set(
-            state.tasks.filter(t => (t.status === 'DONE' || t.status === 'CANCELLED') && !t.archived).map(t => t.id)
-          );
-          const getAllDescendantIds = (rootId: string): string[] => {
-            const children = state.tasks.filter(t => t.parentId === rootId);
-            return [rootId, ...children.flatMap(c => getAllDescendantIds(c.id))];
-          };
+          const doneIds = state.tasks
+            .filter(t => (t.status === 'DONE' || t.status === 'CANCELLED') && !t.archived)
+            .map(t => t.id);
           const allIds = new Set(
-            Array.from(doneIds).flatMap(id => getAllDescendantIds(id))
+            doneIds.flatMap(id => [id, ...getAllDescendantIds(state.tasks, id)])
           );
           return {
             _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
@@ -402,11 +407,15 @@ export const useTaskStore = create<TaskState>()(
         }));
       },
 
+      _lastAutoStatusChange: null,
+      clearLastAutoStatusChange: () => set({ _lastAutoStatusChange: null }),
+
       getTaskById: (id) => get().tasks.find((t) => t.id === id),
       getSubTasks: (parentId) => get().tasks.filter((t) => t.parentId === parentId),
     }),
     {
       name: 'task-storage',
+      version: 1,
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         tasks: state.tasks,
@@ -418,6 +427,20 @@ export const useTaskStore = create<TaskState>()(
         members: state.members,
         darkMode: state.darkMode,
       }),
+      migrate: (persisted: unknown, version: number) => {
+        const state = persisted as Record<string, unknown>;
+        if (version < 1 && Array.isArray(state.tasks)) {
+          state.tasks = (state.tasks as Record<string, unknown>[]).map((t) => {
+            if (t.ganttDisplayMode === undefined) {
+              const mode: GanttDisplayMode = t.showInGantt === false ? 'hidden' : 'bar';
+              const { showInGantt: _, ...rest } = t;
+              return { ...rest, ganttDisplayMode: mode };
+            }
+            return t;
+          });
+        }
+        return state;
+      },
     }
   )
 );
