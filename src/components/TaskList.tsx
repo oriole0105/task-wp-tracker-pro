@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import {
   Box, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Button, IconButton, Chip, FormControl, InputLabel, Select, MenuItem, Checkbox, ListItemText,
-  Typography, Divider, TextField, InputAdornment,
+  Typography, Divider, TextField, InputAdornment, Switch,
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
   Snackbar, Alert, Tooltip,
 } from '@mui/material';
@@ -10,7 +10,7 @@ import {
   Edit, Delete, Add, SubdirectoryArrowRight, ContentCopy, FileUpload, AccountTree,
   FilterListOff, SelectAll, EventAvailable, EventBusy,
   KeyboardArrowDown, KeyboardArrowRight, KeyboardArrowLeft, UnfoldLess, UnfoldMore, EventNote,
-  Search, WarningAmber, Archive, Inventory, ArrowUpward, ArrowDownward,
+  Search, WarningAmber, Archive, Inventory, ArrowUpward, ArrowDownward, Tune,
 } from '@mui/icons-material';
 import { Link as RouterLink } from 'react-router-dom';
 import { DatePicker } from '@mui/x-date-pickers';
@@ -38,6 +38,15 @@ const formatDateOnly = (ts: number | undefined) => {
   return format(ts, 'yyyy-MM-dd');
 };
 
+const tsToDateStr = (ts: number | undefined): string =>
+  ts ? format(ts, 'yyyy-MM-dd') : '';
+
+const dateStrToTs = (s: string): number | undefined => {
+  if (!s) return undefined;
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d).getTime();
+};
+
 interface IndexedTask extends Task {
   indexDisplay: string;
   depth: number;
@@ -45,13 +54,14 @@ interface IndexedTask extends Task {
 }
 
 export const TaskList: React.FC = () => {
-  const { tasks, timeslots, mainCategories, deleteTask, duplicateTask, archiveTask, archiveAllDone, undo, reorderTask, importTasksFromJson } = useTaskStore();
+  const { tasks, timeslots, mainCategories, deleteTask, duplicateTask, archiveTask, archiveAllDone, undo, reorderTask, importTasksFromJson, updateTask } = useTaskStore();
 
   const [filterStatus, setFilterStatus] = useState<TaskStatus[]>(['BACKLOG', 'TODO', 'IN_PROGRESS', 'PAUSED']);
   const [selectedMainCats, setSelectedMainCats] = useState<string[]>([]);
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState<[Date | null, Date | null]>([null, null]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [settingsMode, setSettingsMode] = useState(false);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
@@ -241,6 +251,12 @@ export const TaskList: React.FC = () => {
     'CANCELLED': '已取消',
   };
 
+  const ganttModeMap: Record<'bar' | 'section' | 'hidden', string> = {
+    bar: '進度列',
+    section: '章節標題',
+    hidden: '不顯示',
+  };
+
   const now = Date.now();
 
   return (
@@ -336,6 +352,17 @@ export const TaskList: React.FC = () => {
             </span>
           </Tooltip>
           <Button variant="outlined" size="small" startIcon={<FileUpload />} onClick={() => fileInputRef.current?.click()}>匯入 JSON</Button>
+          <Tooltip title={settingsMode ? '切換回一般檢視模式' : '切換至設定模式，可快速批次調整任務設定'}>
+            <Button
+              variant={settingsMode ? 'contained' : 'outlined'}
+              size="small"
+              startIcon={<Tune fontSize="small" />}
+              color={settingsMode ? 'warning' : 'inherit'}
+              onClick={() => setSettingsMode(v => !v)}
+            >
+              設定模式
+            </Button>
+          </Tooltip>
           <Button variant="contained" size="small" startIcon={<Add />} onClick={() => { setEditingTask(undefined); setParentTaskId(undefined); setIsFormOpen(true); }}>建立任務</Button>
           <input ref={fileInputRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={handleFileChange} />
         </Box>
@@ -357,58 +384,194 @@ export const TaskList: React.FC = () => {
         </Alert>
       )}
 
+      {/* Settings mode hint */}
+      {settingsMode && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          設定模式：每項變更會立即儲存。可使用左上角「復原」按鈕撤銷。
+        </Alert>
+      )}
+
       {/* Task Table */}
       <TableContainer component={Paper}>
         <Table>
           <TableHead sx={{ bgcolor: 'action.hover' }}>
-            <TableRow>
-              <TableCell width={120}>No.</TableCell>
-              <TableCell>任務名稱</TableCell>
-              <TableCell>任務分類</TableCell>
-              <TableCell>預估日期</TableCell>
-              <TableCell>實際日期</TableCell>
-              <TableCell>狀態</TableCell>
-              <TableCell>累計工時</TableCell>
-              <TableCell align="right">操作</TableCell>
-            </TableRow>
+            {settingsMode ? (
+              <TableRow>
+                <TableCell width={120}>No.</TableCell>
+                <TableCell>任務名稱</TableCell>
+                <TableCell width={80} align="center">WBS 顯示</TableCell>
+                <TableCell width={130}>甘特圖模式</TableCell>
+                <TableCell width={140}>預估開始</TableCell>
+                <TableCell width={140}>預估完成</TableCell>
+                <TableCell width={140}>任務分類</TableCell>
+                <TableCell width={130}>狀態</TableCell>
+                <TableCell width={80} align="center">追蹤完成度</TableCell>
+                <TableCell width={90}>完成度 %</TableCell>
+              </TableRow>
+            ) : (
+              <TableRow>
+                <TableCell width={120}>No.</TableCell>
+                <TableCell>任務名稱</TableCell>
+                <TableCell>任務分類</TableCell>
+                <TableCell>預估日期</TableCell>
+                <TableCell>實際日期</TableCell>
+                <TableCell>狀態</TableCell>
+                <TableCell>累計工時</TableCell>
+                <TableCell align="right">操作</TableCell>
+              </TableRow>
+            )}
           </TableHead>
           <TableBody>
             {processedTasks.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} align="center" sx={{ py: 8 }}><Typography color="textSecondary">查無符合條件的任務</Typography></TableCell>
+                <TableCell colSpan={settingsMode ? 10 : 8} align="center" sx={{ py: 8 }}><Typography color="textSecondary">查無符合條件的任務</Typography></TableCell>
               </TableRow>
             ) : processedTasks.map((task) => {
+              // 共用：No. 欄
+              const noCell = (
+                <TableCell>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    {task.hasChildren ? (
+                      <IconButton size="small" onClick={() => toggleCollapse(task.id)} sx={{ mr: 0.5, p: 0.25 }}>
+                        {collapsedTaskIds.has(task.id) ? <KeyboardArrowRight fontSize="small" /> : <KeyboardArrowDown fontSize="small" />}
+                      </IconButton>
+                    ) : <Box sx={{ width: 26 }} />}
+                    <Typography variant="body2" color="textSecondary" sx={{ fontVariantNumeric: 'tabular-nums', fontWeight: task.depth === 1 ? 'bold' : 'normal' }}>
+                      {task.indexDisplay}
+                    </Typography>
+                  </Box>
+                </TableCell>
+              );
+
+              // 共用：任務名稱欄
+              const titleCell = (
+                <TableCell>
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: task.depth === 1 ? 'bold' : 'normal' }}>{task.title}</Typography>
+                    {task.aliasTitle && <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>別名: {task.aliasTitle}</Typography>}
+                    {task.labels && task.labels.length > 0 && (
+                      <Box sx={{ mt: 0.5, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                        {task.labels.map(l => <Chip key={l} label={l} size="small" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />)}
+                      </Box>
+                    )}
+                  </Box>
+                </TableCell>
+              );
+
+              if (settingsMode) {
+                return (
+                  <TableRow key={task.id} hover>
+                    {noCell}
+                    {titleCell}
+                    {/* WBS 顯示 */}
+                    <TableCell align="center">
+                      <Switch
+                        size="small"
+                        checked={task.showInWbs !== false}
+                        onChange={(e) => updateTask(task.id, { showInWbs: e.target.checked })}
+                      />
+                    </TableCell>
+                    {/* 甘特圖模式 */}
+                    <TableCell>
+                      <Select
+                        size="small"
+                        value={task.ganttDisplayMode ?? 'bar'}
+                        onChange={(e) => updateTask(task.id, { ganttDisplayMode: e.target.value as 'bar' | 'section' | 'hidden' })}
+                        sx={{ minWidth: 110 }}
+                      >
+                        {Object.entries(ganttModeMap).map(([k, v]) => (
+                          <MenuItem key={k} value={k}>{v}</MenuItem>
+                        ))}
+                      </Select>
+                    </TableCell>
+                    {/* 預估開始 */}
+                    <TableCell>
+                      <TextField
+                        type="date"
+                        size="small"
+                        value={tsToDateStr(task.estimatedStartDate)}
+                        onChange={(e) => updateTask(task.id, { estimatedStartDate: dateStrToTs(e.target.value) })}
+                        sx={{ width: 130 }}
+                        slotProps={{ htmlInput: { style: { fontSize: '0.8rem', padding: '4px 8px' } } }}
+                      />
+                    </TableCell>
+                    {/* 預估完成 */}
+                    <TableCell>
+                      <TextField
+                        type="date"
+                        size="small"
+                        value={tsToDateStr(task.estimatedEndDate)}
+                        onChange={(e) => updateTask(task.id, { estimatedEndDate: dateStrToTs(e.target.value) })}
+                        sx={{ width: 130 }}
+                        slotProps={{ htmlInput: { style: { fontSize: '0.8rem', padding: '4px 8px' } } }}
+                      />
+                    </TableCell>
+                    {/* 任務分類 */}
+                    <TableCell>
+                      <Select
+                        size="small"
+                        value={task.mainCategory || '其他'}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          updateTask(task.id, { mainCategory: val === '其他' ? undefined : val });
+                        }}
+                        sx={{ minWidth: 110 }}
+                      >
+                        {[...mainCategories, '其他'].map(c => (
+                          <MenuItem key={c} value={c}>{c}</MenuItem>
+                        ))}
+                      </Select>
+                    </TableCell>
+                    {/* 狀態 */}
+                    <TableCell>
+                      <Select
+                        size="small"
+                        value={task.status}
+                        onChange={(e) => updateTask(task.id, { status: e.target.value as TaskStatus })}
+                        sx={{ minWidth: 100 }}
+                      >
+                        {Object.entries(statusMap).map(([k, v]) => (
+                          <MenuItem key={k} value={k}>{v}</MenuItem>
+                        ))}
+                      </Select>
+                    </TableCell>
+                    {/* 追蹤完成度 */}
+                    <TableCell align="center">
+                      <Switch
+                        size="small"
+                        checked={task.trackCompleteness !== false}
+                        onChange={(e) => updateTask(task.id, { trackCompleteness: e.target.checked })}
+                      />
+                    </TableCell>
+                    {/* 完成度 % */}
+                    <TableCell>
+                      <TextField
+                        type="number"
+                        size="small"
+                        value={task.completeness ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value === '' ? undefined : Math.min(100, Math.max(0, Number(e.target.value)));
+                          updateTask(task.id, { completeness: v });
+                        }}
+                        disabled={task.trackCompleteness === false}
+                        sx={{ width: 72 }}
+                        slotProps={{ htmlInput: { min: 0, max: 100, step: 5, style: { fontSize: '0.8rem', padding: '4px 8px' } } }}
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              }
+
+              // 一般模式
               const actual = getActualDates(task);
-              const isCollapsed = collapsedTaskIds.has(task.id);
               const isDoneOrCancelled = task.status === 'DONE' || task.status === 'CANCELLED';
               const isOverdue = !isDoneOrCancelled && !!task.estimatedEndDate && task.estimatedEndDate < now;
               const totalTime = taskTotalTimeMap.get(task.id) || 0;
 
               return (
                 <TableRow key={task.id} hover>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      {task.hasChildren ? (
-                        <IconButton size="small" onClick={() => toggleCollapse(task.id)} sx={{ mr: 0.5, p: 0.25 }}>
-                          {isCollapsed ? <KeyboardArrowRight fontSize="small" /> : <KeyboardArrowDown fontSize="small" />}
-                        </IconButton>
-                      ) : <Box sx={{ width: 26 }} />}
-                      <Typography variant="body2" color="textSecondary" sx={{ fontVariantNumeric: 'tabular-nums', fontWeight: task.depth === 1 ? 'bold' : 'normal' }}>
-                        {task.indexDisplay}
-                      </Typography>
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Box>
-                      <Typography variant="body2" sx={{ fontWeight: task.depth === 1 ? 'bold' : 'normal' }}>{task.title}</Typography>
-                      {task.aliasTitle && <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>別名: {task.aliasTitle}</Typography>}
-                      {task.labels && task.labels.length > 0 && (
-                        <Box sx={{ mt: 0.5, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                          {task.labels.map(l => <Chip key={l} label={l} size="small" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />)}
-                        </Box>
-                      )}
-                    </Box>
-                  </TableCell>
+                  {noCell}
+                  {titleCell}
                   <TableCell>
                     <Chip label={task.mainCategory || '其他'} size="small" variant="outlined" />
                   </TableCell>

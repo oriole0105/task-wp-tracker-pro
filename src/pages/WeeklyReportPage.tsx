@@ -300,6 +300,8 @@ const WeeklyReportPage: React.FC = () => {
         const logEnd = ts.endTime || Date.now();
         return ts.startTime <= endTs && logEnd >= startTs;
       });
+      // section 任務不需日期，直接顯示分隔線
+      if (task.ganttDisplayMode === 'section') return true;
       return hasEstimatedInRange || hasActualInRange;
     });
   }, [tasks, timeslots, ganttRange, selectedLevels]);
@@ -569,12 +571,28 @@ const WeeklyReportPage: React.FC = () => {
       return { minStart, maxEnd };
     };
 
+    // 輸出單一任務的 milestone（緊接在 bar 或 section header 之後）
+    const renderTaskMilestones = (task: Task) => {
+      const milestones = (task.milestones ?? []).filter(m =>
+        m.showInGantt && m.title.trim() !== '' &&
+        m.date >= ganttRangeStartStr && m.date <= ganttRangeEndStr
+      );
+      milestones.forEach(m => {
+        const cleanTitle = m.title.replace(/[[\]]/g, '');
+        source += `[${cleanTitle}] happens ${m.date}\n`;
+        if (m.color) {
+          source += `[${cleanTitle}] is colored in ${m.color}\n`;
+        }
+      });
+    };
+
     const renderTask = (task: Task) => {
       // 章節標題模式：groupByCategory 已輸出主分類分隔線，section 退化為 hidden 避免雙重分隔
       if (task.ganttDisplayMode === 'section') {
         if (groupByCategory) return;
         const cleanTitle = task.title.replace(/[[\]]/g, '');
         source += `-- ${cleanTitle} --\n`;
+        renderTaskMilestones(task);
         return;
       }
 
@@ -602,6 +620,8 @@ const WeeklyReportPage: React.FC = () => {
           source += `[${cleanTitle}] is colored in Orange\n`;
         }
       }
+      // Milestone 緊接在 bar 之後輸出
+      renderTaskMilestones(task);
     };
 
     if (groupByCategory) {
@@ -618,11 +638,11 @@ const WeeklyReportPage: React.FC = () => {
       source += `\n`;
     }
 
-    // --- Milestone 渲染 ---
-    // 准入條件依任務的 ganttDisplayMode 設定：bar/section → 允許（再看個別 showInGantt）；hidden → 全部封鎖
-    // 使用 tasks（全量），而非 ganttActiveTasks，確保沒有日期的 section 任務的 milestone 也能被收集
-    const ganttMilestones = tasks
+    // --- Fallback：沒有日期而不在 ganttActiveTasks 裡的 section 任務，其 milestone 仍需輸出 ---
+    const ganttActiveTaskIds = new Set(ganttActiveTasks.map(t => t.id));
+    const orphanMilestones = tasks
       .filter(task =>
+        !ganttActiveTaskIds.has(task.id) &&
         task.ganttDisplayMode !== 'hidden' &&
         selectedLevels.includes(getTaskDepth(task))
       )
@@ -632,9 +652,9 @@ const WeeklyReportPage: React.FC = () => {
           m.date >= ganttRangeStartStr && m.date <= ganttRangeEndStr
         )
       );
-    if (ganttMilestones.length > 0) {
+    if (orphanMilestones.length > 0) {
       source += '\n';
-      ganttMilestones.forEach(m => {
+      orphanMilestones.forEach(m => {
         const cleanTitle = m.title.replace(/[[\]]/g, '');
         source += `[${cleanTitle}] happens ${m.date}\n`;
         if (m.color) {

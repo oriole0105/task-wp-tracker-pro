@@ -328,7 +328,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
   };
 
   const handleSubmit = () => {
-    if (ganttDisplayMode !== 'hidden' && (!estimatedStartDate || !estimatedEndDate)) {
+    if (ganttDisplayMode === 'bar' && (!estimatedStartDate || !estimatedEndDate)) {
       setDateError(true);
       return;
     }
@@ -504,28 +504,28 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
 
           <Grid size={{ xs: 12, md: 6 }}>
             <DatePicker
-              label={ganttDisplayMode !== 'hidden' ? '預估開始日期 *' : '預估開始日期'}
+              label={ganttDisplayMode === 'bar' ? '預估開始日期 *' : '預估開始日期'}
               value={estimatedStartDate}
               onChange={(newValue) => { setEstimatedStartDate(newValue); if (newValue) setDateError(false); }}
               slotProps={{
                 textField: {
                   fullWidth: true,
-                  error: dateError && ganttDisplayMode !== 'hidden' && !estimatedStartDate,
-                  helperText: dateError && ganttDisplayMode !== 'hidden' && !estimatedStartDate ? '顯示於甘特圖時為必填' : undefined,
+                  error: dateError && ganttDisplayMode === 'bar' && !estimatedStartDate,
+                  helperText: dateError && ganttDisplayMode === 'bar' && !estimatedStartDate ? '顯示進度列時為必填' : undefined,
                 },
               }}
             />
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
             <DatePicker
-              label={ganttDisplayMode !== 'hidden' ? '預估完成日期 *' : '預估完成日期'}
+              label={ganttDisplayMode === 'bar' ? '預估完成日期 *' : '預估完成日期'}
               value={estimatedEndDate}
               onChange={(newValue) => { setEstimatedEndDate(newValue); if (newValue) setDateError(false); }}
               slotProps={{
                 textField: {
                   fullWidth: true,
-                  error: dateError && ganttDisplayMode !== 'hidden' && !estimatedEndDate,
-                  helperText: dateError && ganttDisplayMode !== 'hidden' && !estimatedEndDate ? '顯示於甘特圖時為必填' : undefined,
+                  error: dateError && ganttDisplayMode === 'bar' && !estimatedEndDate,
+                  helperText: dateError && ganttDisplayMode === 'bar' && !estimatedEndDate ? '顯示進度列時為必填' : undefined,
                 },
               }}
             />
