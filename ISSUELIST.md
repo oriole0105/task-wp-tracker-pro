@@ -214,12 +214,24 @@
 
 ---
 
+### ENH-015 — 任務里程碑 (Milestones)
+- **狀態**：✅ 已解決（2026-03-14）
+- **優先度**：中
+- **描述**：每個任務可設定多個里程碑，支援在甘特圖中顯示
+- **實作**：
+  - `src/types/index.ts`：新增 `Milestone` interface（id/title/date/showInGantt/color?/note?）；`Task` 加入 `milestones?: Milestone[]`
+  - `src/components/TaskForm.tsx`：新增「里程碑」section，支援新增/編輯/刪除，含日期選擇器、8 色選單、顯示於甘特圖勾選框
+  - `src/pages/WeeklyReportPage.tsx`：`ganttSource` 渲染 `[title] happens date` 及顏色標記，過濾 `showInGantt=true` 且在 `ganttRange` 內的里程碑
+  - `src/store/useTaskStore.ts`：`duplicateTask` 加入 `milestones: []`
+
+---
+
 ## 統計
 
 | 類別 | 數量 |
 |---|---|
 | ✅ 已解決 BUG | 7 |
-| ✅ 已解決功能 | 7 |
+| ✅ 已解決功能 | 8 |
 | 📋 待處理功能 | 1 |
 | 💡 建議功能 | 3 |
 | 📋 技術債 | 1 |

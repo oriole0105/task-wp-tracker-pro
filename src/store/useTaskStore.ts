@@ -157,8 +157,9 @@ export const useTaskStore = create<TaskState>()(
           showInReport: source.showInReport !== false,
           trackCompleteness: source.trackCompleteness !== false,
           parentId: source.parentId,
-          status: 'TODO',
+          status: 'BACKLOG',
           outputs: [],
+          milestones: [],
         });
       },
 
@@ -181,7 +182,7 @@ export const useTaskStore = create<TaskState>()(
               showInReport: item.showInReport ?? true,
               trackCompleteness: item.trackCompleteness ?? true,
               parentId: pid,
-              status: item.status ?? 'TODO',
+              status: item.status ?? 'BACKLOG',
               outputs: [],
             });
             if (item.children?.length) {

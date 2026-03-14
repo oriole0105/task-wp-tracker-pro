@@ -2,6 +2,15 @@ export type TaskStatus = 'BACKLOG' | 'TODO' | 'IN_PROGRESS' | 'PAUSED' | 'DONE' 
 
 export type GanttDisplayMode = 'bar' | 'section' | 'hidden';
 
+export interface Milestone {
+  id: string;
+  title: string;        // 里程碑名稱（甘特圖顯示標題）
+  date: string;         // 'yyyy-MM-dd'
+  showInGantt: boolean;
+  color?: string;       // PlantUML color 名稱，e.g. 'Red'、'Gold'
+  note?: string;
+}
+
 /**
  * @deprecated Use Timeslot instead. Kept for migration script compatibility.
  */
@@ -78,6 +87,7 @@ export interface Task {
   ganttDisplayMode: GanttDisplayMode;
   showInReport?: boolean; // 顯示於週報進度表，預設 true；固定會議等可設為 false
   trackCompleteness?: boolean; // 預設 true；週期型/持續型任務設 false，不追蹤完成度 %
+  milestones?: Milestone[];
   archived?: boolean;
   archivedAt?: number;
 }

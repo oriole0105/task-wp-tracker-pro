@@ -2,13 +2,13 @@ import React, { useMemo, useState } from 'react';
 import {
   Box, Typography, Paper, Grid, TextField, Button,
   FormGroup, FormControlLabel, Checkbox, Divider, Switch,
-  ToggleButton, ToggleButtonGroup,
+  ToggleButton, ToggleButtonGroup, Collapse,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Chip, IconButton, Tooltip,
   Dialog, DialogTitle, DialogContent, DialogActions,
   FormControl, InputLabel, Select, MenuItem,
 } from '@mui/material';
-import { ContentCopy, Assessment, Image as ImageIcon, Code, FilterList, AccountTree, Timeline, Layers, ViewWeek, Inventory2, ChevronLeft, ChevronRight, TrendingUp, Summarize, ShowChart, Close, AddCircleOutline, Download } from '@mui/icons-material';
+import { ContentCopy, Assessment, Image as ImageIcon, Code, FilterList, AccountTree, Timeline, Layers, ViewWeek, Inventory2, ChevronLeft, ChevronRight, TrendingUp, Summarize, ShowChart, Close, AddCircleOutline, Download, ExpandMore, ExpandLess, Tune } from '@mui/icons-material';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useTaskStore } from '../store/useTaskStore';
 import { startOfDay, endOfDay, addDays, addMonths, subMonths, subDays, subWeeks, addWeeks, startOfWeek, format, isValid } from 'date-fns';
@@ -254,6 +254,7 @@ const WeeklyReportPage: React.FC = () => {
   // --- Gantt Options ---
   const [showTodayMark, setShowTodayMark] = useState(true);
   const [groupByCategory, setGroupByCategory] = useState(false);
+  const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [ganttMode, setGanttMode] = useState<'weekly' | 'workReview'>('weekly');
   const [ganttScale, setGanttScale] = useState<'daily' | 'weekly' | 'monthly'>('daily');
   const [ganttZoom, setGanttZoom] = useState(1);
@@ -529,31 +530,60 @@ const WeeklyReportPage: React.FC = () => {
       .forEach(d => { source += `${d} is colored in lightblue\n`; });
     source += '\n';
 
+    // 計算單一任務的自身日期範圍
+    const computeTaskSpan = (t: Task): { selfStart?: number; selfEnd?: number; isDoneOrCancelled: boolean } => {
+      const actualStart = getTaskActualStart(t.id, tasks, timeslots);
+      const isDoneOrCancelled = t.status === 'DONE' || t.status === 'CANCELLED';
+      const actualEnd = isDoneOrCancelled ? getTaskActualEnd(t.id, tasks, timeslots) : undefined;
+      let selfStart: number | undefined;
+      let selfEnd: number | undefined;
+      if (t.status === 'BACKLOG' || t.status === 'TODO') {
+        selfStart = t.estimatedStartDate;
+        selfEnd = t.estimatedEndDate;
+      } else if (t.status === 'IN_PROGRESS' || t.status === 'PAUSED') {
+        selfStart = actualStart ?? t.estimatedStartDate;
+        selfEnd = t.estimatedEndDate || Date.now() + 86400000;
+      } else if (isDoneOrCancelled) {
+        selfStart = actualStart ?? t.estimatedStartDate;
+        selfEnd = actualEnd ?? t.estimatedEndDate ?? Date.now();
+      }
+      return { selfStart, selfEnd, isDoneOrCancelled };
+    };
+
+    // 遞迴收集所有 bar 模式子孫任務的日期範圍
+    const getDescendantBarSpan = (taskId: string): { minStart?: number; maxEnd?: number } => {
+      const barChildren = ganttActiveTasks.filter(t =>
+        t.parentId === taskId && t.ganttDisplayMode !== 'section' && t.ganttDisplayMode !== 'hidden'
+      );
+      if (barChildren.length === 0) return {};
+      let minStart: number | undefined;
+      let maxEnd: number | undefined;
+      barChildren.forEach(child => {
+        const { selfStart, selfEnd } = computeTaskSpan(child);
+        if (selfStart !== undefined) minStart = minStart === undefined ? selfStart : Math.min(minStart, selfStart);
+        if (selfEnd !== undefined) maxEnd = maxEnd === undefined ? selfEnd : Math.max(maxEnd, selfEnd);
+        const { minStart: descMin, maxEnd: descMax } = getDescendantBarSpan(child.id);
+        if (descMin !== undefined) minStart = minStart === undefined ? descMin : Math.min(minStart, descMin);
+        if (descMax !== undefined) maxEnd = maxEnd === undefined ? descMax : Math.max(maxEnd, descMax);
+      });
+      return { minStart, maxEnd };
+    };
+
     const renderTask = (task: Task) => {
-      // 章節標題模式：渲染為分隔線
+      // 章節標題模式：groupByCategory 已輸出主分類分隔線，section 退化為 hidden 避免雙重分隔
       if (task.ganttDisplayMode === 'section') {
+        if (groupByCategory) return;
         const cleanTitle = task.title.replace(/[[\]]/g, '');
         source += `-- ${cleanTitle} --\n`;
         return;
       }
 
-      const actualStart = getTaskActualStart(task.id, tasks, timeslots);
-      const isDoneOrCancelled = task.status === 'DONE' || task.status === 'CANCELLED';
-      const actualEnd = isDoneOrCancelled ? getTaskActualEnd(task.id, tasks, timeslots) : undefined;
+      const { selfStart, selfEnd, isDoneOrCancelled } = computeTaskSpan(task);
 
-      let finalStart: number | undefined;
-      let finalEnd: number | undefined;
-
-      if (task.status === 'BACKLOG' || task.status === 'TODO') {
-        finalStart = task.estimatedStartDate;
-        finalEnd = task.estimatedEndDate;
-      } else if (task.status === 'IN_PROGRESS' || task.status === 'PAUSED') {
-        finalStart = actualStart ?? task.estimatedStartDate;
-        finalEnd = task.estimatedEndDate || Date.now() + 86400000;
-      } else if (isDoneOrCancelled) {
-        finalStart = actualStart ?? task.estimatedStartDate;
-        finalEnd = actualEnd ?? task.estimatedEndDate ?? Date.now();
-      }
+      // 父任務自動 span 至最早子任務開始～最晚子任務結束
+      const { minStart: childMin, maxEnd: childMax } = getDescendantBarSpan(task.id);
+      const finalStart = childMin !== undefined ? childMin : selfStart;
+      const finalEnd = childMax !== undefined ? childMax : selfEnd;
 
       if (finalStart && finalEnd && isValid(finalStart) && isValid(finalEnd)) {
         const startStr = format(finalStart, 'yyyy-MM-dd');
@@ -588,9 +618,34 @@ const WeeklyReportPage: React.FC = () => {
       source += `\n`;
     }
 
+    // --- Milestone 渲染 ---
+    // 准入條件依任務的 ganttDisplayMode 設定：bar/section → 允許（再看個別 showInGantt）；hidden → 全部封鎖
+    // 使用 tasks（全量），而非 ganttActiveTasks，確保沒有日期的 section 任務的 milestone 也能被收集
+    const ganttMilestones = tasks
+      .filter(task =>
+        task.ganttDisplayMode !== 'hidden' &&
+        selectedLevels.includes(getTaskDepth(task))
+      )
+      .flatMap(task =>
+        (task.milestones ?? []).filter(m =>
+          m.showInGantt && m.title.trim() !== '' &&
+          m.date >= ganttRangeStartStr && m.date <= ganttRangeEndStr
+        )
+      );
+    if (ganttMilestones.length > 0) {
+      source += '\n';
+      ganttMilestones.forEach(m => {
+        const cleanTitle = m.title.replace(/[[\]]/g, '');
+        source += `[${cleanTitle}] happens ${m.date}\n`;
+        if (m.color) {
+          source += `[${cleanTitle}] is colored in ${m.color}\n`;
+        }
+      });
+    }
+
     source += '@endgantt';
     return source;
-  }, [ganttActiveTasks, timeslots, ganttRange, showTodayMark, holidays, ganttScale, ganttZoom, groupByCategory]);
+  }, [ganttActiveTasks, tasks, selectedLevels, timeslots, ganttRange, showTodayMark, holidays, ganttScale, ganttZoom, groupByCategory]);
 
   const getPlantUMLUrl = (source: string) => {
     try { return `https://www.plantuml.com/plantuml/svg/${plantumlEncoder.encode(source)}`; } catch (e) { return ''; }
@@ -1094,7 +1149,24 @@ const WeeklyReportPage: React.FC = () => {
       </Paper>
 
       {/* Options Panel */}
-      <Paper sx={{ p: 3, mb: 4, border: '1px dashed', borderColor: 'divider' }}>
+      <Paper sx={{ mb: 4, border: '1px dashed', borderColor: 'divider' }}>
+        <Box
+          sx={{ px: 2.5, py: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }}
+          onClick={() => setSettingsExpanded(v => !v)}
+        >
+          <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontWeight: 500 }}>
+            <Tune fontSize="small" /> 素材生成設定
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Typography variant="caption" color="text.secondary">
+              {settingsExpanded ? '收合' : '展開'}
+            </Typography>
+            {settingsExpanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+          </Box>
+        </Box>
+        <Collapse in={settingsExpanded}>
+          <Divider />
+          <Box sx={{ p: 3 }}>
         <Grid container spacing={3}>
           {/* Hierarchy Filter */}
           <Grid size={{ xs: 12 }}>
@@ -1218,6 +1290,8 @@ const WeeklyReportPage: React.FC = () => {
             </Box>
           </Grid>
         </Grid>
+          </Box>
+        </Collapse>
       </Paper>
 
       {/* WBS + Gantt（雙月：計畫展望區間；半年/週報：同進度區間） */}

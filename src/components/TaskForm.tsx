@@ -11,12 +11,23 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { format, startOfWeek, addDays, parseISO } from 'date-fns';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { v4 as uuidv4 } from 'uuid';
-import type { Task, TaskStatus, WorkOutput, WeeklySnapshot } from '../types';
+import type { Task, TaskStatus, WorkOutput, WeeklySnapshot, Milestone } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { getTaskActualStart, getTaskActualEnd } from '../utils/taskDateUtils';
 import { computeTaskWbsMap } from '../utils/wbs';
 
 const CHART_COLORS = ['#1976d2', '#e91e63', '#4caf50', '#ff9800', '#9c27b0', '#00bcd4', '#795548'];
+
+const MILESTONE_COLORS: { value: string; label: string; css: string }[] = [
+  { value: 'Red',        label: '紅',  css: '#f44336' },
+  { value: 'Orange',     label: '橙',  css: '#ff9800' },
+  { value: 'Gold',       label: '金',  css: '#ffc107' },
+  { value: 'LimeGreen',  label: '草綠', css: '#8bc34a' },
+  { value: 'DeepSkyBlue',label: '藍',  css: '#03a9f4' },
+  { value: 'Violet',     label: '紫',  css: '#9c27b0' },
+  { value: 'HotPink',    label: '粉',  css: '#e91e63' },
+  { value: 'Silver',     label: '灰',  css: '#9e9e9e' },
+];
 
 interface TaskFormProps {
   open: boolean;
@@ -37,13 +48,14 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
   const [estimatedEndDate, setEstimatedEndDate] = useState<Date | null>(null);
   const [assignee, setAssignee] = useState('');
   const [reporter, setReporter] = useState('');
-  const [status, setStatus] = useState<TaskStatus>('TODO');
+  const [status, setStatus] = useState<TaskStatus>('BACKLOG');
   const [completeness, setCompleteness] = useState<number | ''>('');
   const [showInWbs, setShowInWbs] = useState(true);
   const [ganttDisplayMode, setGanttDisplayMode] = useState<'bar' | 'section' | 'hidden'>('bar');
   const [showInReport, setShowInReport] = useState(true);
   const [dateError, setDateError] = useState(false);
   const [outputs, setOutputs] = useState<WorkOutput[]>([]);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [labels, setLabels] = useState<string[]>([]);
   const [newLabel, setNewLabel] = useState('');
   const [pauseReason, setPauseReason] = useState('');
@@ -52,6 +64,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
   const [currentParentId, setCurrentParentId] = useState<string>('');
 
   // --- Snapshot management state ---
+  const [showAdvanced, setShowAdvanced] = useState(false);
   // 任務快照：立即存 store，從 store reactive 讀（edit mode only）
   const [showTaskSnapshots, setShowTaskSnapshots] = useState(false);
   const [newSnapDate, setNewSnapDate] = useState<Date | null>(null);
@@ -134,8 +147,10 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setGanttDisplayMode(initialData.ganttDisplayMode ?? 'bar');
       setShowInReport(initialData.showInReport !== false);
       setOutputs(initialData.outputs || []);
+      setMilestones(initialData.milestones ?? []);
       setLabels(initialData.labels || []);
       setCurrentParentId(initialData.parentId || '');
+      setShowAdvanced(!!(initialData.aliasTitle || initialData.description || initialData.assignee || initialData.reporter || (initialData.labels && initialData.labels.length > 0)));
     } else if (parentId) {
       const parent = getTaskById(parentId);
       if (parent) {
@@ -147,7 +162,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setDescription('');
       setAssignee(selfName);
       setReporter('');
-      setStatus('TODO');
+      setStatus('BACKLOG');
       setCompleteness('');
       setPauseReason('');
       setTrackCompleteness(true);
@@ -155,8 +170,10 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setGanttDisplayMode('bar');
       setShowInReport(true);
       setOutputs([]);
+      setMilestones([]);
       setLabels([]);
       setCurrentParentId(parentId);
+      setShowAdvanced(false);
     } else {
       const selfName = members.find(m => m.isSelf)?.name || '';
       setTitle('');
@@ -167,7 +184,8 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setEstimatedEndDate(null);
       setAssignee(selfName);
       setReporter('');
-      setStatus('TODO');
+      setStatus('BACKLOG');
+      setShowAdvanced(false);
       setCompleteness('');
       setPauseReason('');
       setTrackCompleteness(true);
@@ -175,6 +193,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setGanttDisplayMode('bar');
       setShowInReport(true);
       setOutputs([]);
+      setMilestones([]);
       setLabels([]);
       setCurrentParentId('');
     }
@@ -209,6 +228,24 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
 
   const handleDeleteLabel = (labelToDelete: string) => {
     setLabels(labels.filter(l => l !== labelToDelete));
+  };
+
+  // --- Milestone handlers ---
+  const handleAddMilestone = () => {
+    setMilestones(prev => [...prev, {
+      id: uuidv4(),
+      title: '',
+      date: format(new Date(), 'yyyy-MM-dd'),
+      showInGantt: true,
+    }]);
+  };
+
+  const handleUpdateMilestone = (id: string, updates: Partial<Omit<Milestone, 'id'>>) => {
+    setMilestones(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
+  };
+
+  const handleDeleteMilestone = (id: string) => {
+    setMilestones(prev => prev.filter(m => m.id !== id));
   };
 
   // --- Output handlers ---
@@ -318,6 +355,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       showInReport,
       trackCompleteness,
       outputs,
+      milestones,
       labels,
       parentId: currentParentId || undefined,
     };
@@ -345,11 +383,9 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       </DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid size={{ xs: 12, md: 8 }}>
+          {/* 任務名稱 */}
+          <Grid size={{ xs: 12 }}>
             <TextField label="任務名稱" fullWidth value={title} onChange={(e) => setTitle(e.target.value)} required />
-          </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <TextField label="別名 (Alias Title)" fullWidth value={aliasTitle} onChange={(e) => setAliasTitle(e.target.value)} inputProps={{ maxLength: 10 }} />
           </Grid>
 
           {/* Parent Task Selector */}
@@ -389,33 +425,34 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
             />
           </Grid>
 
-          <Grid size={{ xs: 12 }}>
-            <TextField label="任務詳細說明" fullWidth multiline rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+          {/* 設定參數區塊（緊接在上層任務之後） */}
+          <Grid size={{ xs: 12 }} sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+            <FormControlLabel
+              control={<Checkbox checked={showInWbs} onChange={(e) => setShowInWbs(e.target.checked)} size="small" />}
+              label="顯示於 WBS"
+            />
+            <FormControlLabel
+              control={<Checkbox checked={trackCompleteness} onChange={(e) => setTrackCompleteness(e.target.checked)} size="small" />}
+              label="追蹤完成度 %"
+            />
+            <FormControlLabel
+              control={<Checkbox checked={showInReport} onChange={(e) => setShowInReport(e.target.checked)} size="small" />}
+              label="顯示於週報進度表"
+            />
           </Grid>
-
           <Grid size={{ xs: 12 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <LabelIcon fontSize="small" color="action" />
-                <Typography variant="body2" sx={{ fontWeight: 'bold' }}>標籤 (最多 3 個)</Typography>
-            </Box>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
-                {labels.map((label) => (
-                    <Chip key={label} label={label} onDelete={() => handleDeleteLabel(label)} color="secondary" variant="outlined" size="small" />
-                ))}
-                {labels.length < 3 && (
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                        <TextField
-                            size="small"
-                            placeholder="新增標籤..."
-                            value={newLabel}
-                            onChange={(e) => setNewLabel(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddLabel())}
-                            sx={{ width: 150 }}
-                        />
-                        <Button size="small" onClick={handleAddLabel} disabled={!newLabel.trim()}>加入</Button>
-                    </Box>
-                )}
-            </Box>
+            <FormControl component="fieldset" sx={{ ml: 1 }}>
+              <FormLabel component="legend" sx={{ fontSize: '0.875rem' }}>甘特圖顯示方式</FormLabel>
+              <RadioGroup
+                row
+                value={ganttDisplayMode}
+                onChange={(e) => setGanttDisplayMode(e.target.value as 'bar' | 'section' | 'hidden')}
+              >
+                <FormControlLabel value="bar" control={<Radio size="small" />} label="進度列" />
+                <FormControlLabel value="section" control={<Radio size="small" />} label="章節標題" />
+                <FormControlLabel value="hidden" control={<Radio size="small" />} label="不顯示" />
+              </RadioGroup>
+            </FormControl>
           </Grid>
 
           <Grid size={{ xs: 12, md: 6 }}>
@@ -522,25 +559,6 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
             </Box>
           </Grid>
 
-          <Grid size={{ xs: 12, md: 6 }}>
-            <Autocomplete
-              freeSolo
-              options={memberNames}
-              value={assignee}
-              onInputChange={(_, v) => setAssignee(v)}
-              renderInput={(params) => <TextField {...params} label="任務負責人" fullWidth />}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 6 }}>
-            <Autocomplete
-              freeSolo
-              options={memberNames}
-              value={reporter}
-              onInputChange={(_, v) => setReporter(v)}
-              renderInput={(params) => <TextField {...params} label="任務指派人" fullWidth />}
-            />
-          </Grid>
-
           {trackCompleteness && (
             <Grid size={{ xs: 12, md: 6 }}>
               <TextField
@@ -557,33 +575,70 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
               />
             </Grid>
           )}
-          <Grid size={{ xs: 12, md: trackCompleteness ? 6 : 12 }} sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-            <FormControlLabel
-              control={<Checkbox checked={trackCompleteness} onChange={(e) => setTrackCompleteness(e.target.checked)} />}
-              label="追蹤完成度 %"
-            />
-            <FormControlLabel
-              control={<Checkbox checked={showInWbs} onChange={(e) => setShowInWbs(e.target.checked)} />}
-              label="顯示於 WBS"
-            />
-            <FormControlLabel
-              control={<Checkbox checked={showInReport} onChange={(e) => setShowInReport(e.target.checked)} />}
-              label="顯示於週報進度表"
-            />
-          </Grid>
+
+          {/* 進階選項（漸進式展開） */}
           <Grid size={{ xs: 12 }}>
-            <FormControl component="fieldset" sx={{ ml: 1 }}>
-              <FormLabel component="legend" sx={{ fontSize: '0.875rem' }}>甘特圖顯示方式</FormLabel>
-              <RadioGroup
-                row
-                value={ganttDisplayMode}
-                onChange={(e) => setGanttDisplayMode(e.target.value as 'bar' | 'section' | 'hidden')}
-              >
-                <FormControlLabel value="bar" control={<Radio size="small" />} label="進度列" />
-                <FormControlLabel value="section" control={<Radio size="small" />} label="章節標題" />
-                <FormControlLabel value="hidden" control={<Radio size="small" />} label="不顯示" />
-              </RadioGroup>
-            </FormControl>
+            <Box
+              onClick={() => setShowAdvanced(v => !v)}
+              sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 0.5, py: 0.5, userSelect: 'none' }}
+            >
+              {showAdvanced ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+              <Typography variant="body2" color="text.secondary">
+                進階選項（別名、說明、標籤、負責人、指派人）
+              </Typography>
+            </Box>
+            <Collapse in={showAdvanced}>
+              <Grid container spacing={2} sx={{ mt: 0.5 }}>
+                <Grid size={{ xs: 12 }}>
+                  <TextField label="別名 (Alias Title)" fullWidth value={aliasTitle} onChange={(e) => setAliasTitle(e.target.value)} inputProps={{ maxLength: 10 }} />
+                </Grid>
+                <Grid size={{ xs: 12 }}>
+                  <TextField label="任務詳細說明" fullWidth multiline rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+                </Grid>
+                <Grid size={{ xs: 12 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                      <LabelIcon fontSize="small" color="action" />
+                      <Typography variant="body2" sx={{ fontWeight: 'bold' }}>標籤 (最多 3 個)</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
+                      {labels.map((label) => (
+                          <Chip key={label} label={label} onDelete={() => handleDeleteLabel(label)} color="secondary" variant="outlined" size="small" />
+                      ))}
+                      {labels.length < 3 && (
+                          <Box sx={{ display: 'flex', gap: 1 }}>
+                              <TextField
+                                  size="small"
+                                  placeholder="新增標籤..."
+                                  value={newLabel}
+                                  onChange={(e) => setNewLabel(e.target.value)}
+                                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddLabel())}
+                                  sx={{ width: 150 }}
+                              />
+                              <Button size="small" onClick={handleAddLabel} disabled={!newLabel.trim()}>加入</Button>
+                          </Box>
+                      )}
+                  </Box>
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Autocomplete
+                    freeSolo
+                    options={memberNames}
+                    value={assignee}
+                    onInputChange={(_, v) => setAssignee(v)}
+                    renderInput={(params) => <TextField {...params} label="任務負責人" fullWidth />}
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Autocomplete
+                    freeSolo
+                    options={memberNames}
+                    value={reporter}
+                    onInputChange={(_, v) => setReporter(v)}
+                    renderInput={(params) => <TextField {...params} label="任務指派人" fullWidth />}
+                  />
+                </Grid>
+              </Grid>
+            </Collapse>
           </Grid>
 
           {/* 任務完成度歷史快照（僅編輯模式，且追蹤完成度時顯示） */}
@@ -710,6 +765,98 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
               </Collapse>
             </Grid>
           )}
+
+          {/* ── Milestone Section ── */}
+          <Grid size={{ xs: 12 }}>
+            <Divider sx={{ my: 2 }} />
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <Typography variant="h6">里程碑 (Milestones)</Typography>
+              <Button startIcon={<Add />} variant="outlined" size="small" onClick={handleAddMilestone}>新增里程碑</Button>
+            </Box>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              {milestones.map((ms) => (
+                <Paper key={ms.id} variant="outlined" sx={{ p: 1.5, bgcolor: 'action.hover' }}>
+                  <Grid container spacing={1.5} alignItems="center">
+                    <Grid size={{ xs: 12, sm: 4 }}>
+                      <TextField
+                        label="里程碑名稱"
+                        size="small"
+                        fullWidth
+                        value={ms.title}
+                        onChange={(e) => handleUpdateMilestone(ms.id, { title: e.target.value })}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 3 }}>
+                      <DatePicker
+                        label="日期"
+                        value={ms.date ? new Date(ms.date) : null}
+                        onChange={(d) => d && handleUpdateMilestone(ms.id, { date: format(d, 'yyyy-MM-dd') })}
+                        slotProps={{ textField: { size: 'small', fullWidth: true } }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 3 }}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>顏色</InputLabel>
+                        <Select
+                          value={ms.color ?? ''}
+                          label="顏色"
+                          onChange={(e) => handleUpdateMilestone(ms.id, { color: e.target.value || undefined })}
+                          renderValue={(val) => {
+                            if (!val) return <em>預設</em>;
+                            const c = MILESTONE_COLORS.find(x => x.value === val);
+                            return (
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: c?.css ?? '#999', flexShrink: 0 }} />
+                                {c?.label ?? val}
+                              </Box>
+                            );
+                          }}
+                        >
+                          <MenuItem value=""><em>預設</em></MenuItem>
+                          {MILESTONE_COLORS.map(c => (
+                            <MenuItem key={c.value} value={c.value}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: c.css, flexShrink: 0 }} />
+                                {c.label}
+                              </Box>
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid size={{ xs: 'auto' }} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            size="small"
+                            checked={ms.showInGantt}
+                            onChange={(e) => handleUpdateMilestone(ms.id, { showInGantt: e.target.checked })}
+                          />
+                        }
+                        label={<Typography variant="caption">甘特圖</Typography>}
+                        sx={{ mr: 0 }}
+                      />
+                      <IconButton size="small" color="error" onClick={() => handleDeleteMilestone(ms.id)}>
+                        <Delete />
+                      </IconButton>
+                    </Grid>
+                    <Grid size={{ xs: 12 }}>
+                      <TextField
+                        label="備註（選填）"
+                        size="small"
+                        fullWidth
+                        value={ms.note ?? ''}
+                        onChange={(e) => handleUpdateMilestone(ms.id, { note: e.target.value || undefined })}
+                      />
+                    </Grid>
+                  </Grid>
+                </Paper>
+              ))}
+              {milestones.length === 0 && (
+                <Typography variant="body2" color="text.disabled" sx={{ pl: 1 }}>尚無里程碑</Typography>
+              )}
+            </Box>
+          </Grid>
 
           <Grid size={{ xs: 12 }}>
             <Divider sx={{ my: 2 }} />

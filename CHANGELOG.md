@@ -8,6 +8,25 @@
 
 ### 新功能 (Features)
 
+- **任務里程碑 (Milestones)（ENH-015）**
+  - 每個任務可設定 0 到 N 個里程碑，含名稱、日期、備註與顯示顏色
+  - 支援 8 種顏色選擇（紅/橙/金/草綠/藍/紫/粉/灰），對應 PlantUML color 名稱
+  - 每個里程碑可個別設定是否顯示於甘特圖（`showInGantt` 勾選框）
+  - 甘特圖中以 PlantUML `happens` 語法渲染為鑽石標記（◆）
+  - 只渲染 `ganttRange` 時間範圍內、`showInGantt=true` 且名稱非空的里程碑
+  - 里程碑顯示與任務 `ganttDisplayMode` 連動：`bar`/`section` 任務才允許顯示，`hidden` 任務的里程碑全部封鎖
+  - 里程碑來源從全量 `tasks` 收集（而非 `ganttActiveTasks`），確保無日期的 `section` 任務的里程碑也能正確渲染
+  - 任務副本不繼承里程碑
+  - `TaskForm` 新增「里程碑」section（在工作產出之上）
+
+- **週報設定面板縮合/展開**
+  - 素材生成設定區塊預設縮合，點擊標題列可展開/收合
+  - 標題列顯示 `Tune` 圖示、「素材生成設定」文字及展開狀態提示
+
+- **甘特圖邏輯修正**
+  - `section` 模式任務在 `groupByCategory` 啟用時，退化為 `hidden`（不輸出分隔線），避免主分類分隔線與任務分隔線雙重疊加
+  - 父任務 bar 自動 span 至最早子任務開始 ～ 最晚子任務結束（遞迴收集所有 `bar` 模式子孫任務日期範圍，`section`/`hidden` 子任務不計入；子任務無日期時 fallback 至父任務自身日期）
+
 - **Timeslot 時間重疊防護**
   - 新增/編輯 Timeslot 時自動偵測時間重疊，有衝突即阻擋儲存
   - 錯誤訊息顯示衝突的任務名稱與時間範圍（頂部 Snackbar 提示）
