@@ -4,6 +4,25 @@
 
 ---
 
+## [Unreleased] — 2026-03-14 (b)
+
+### 新功能 (Features)
+
+- **完成度百分比類別（真實／信心）**
+  - `Task` 新增 `completenessType: 'real' | 'confidence'`（預設 `'confidence'`）
+  - TaskForm「整體完成度 %」欄位旁新增 **百分比類別** 切換按鈕（信心／真實），僅在「追蹤完成度」開啟時顯示；不出現在任務設定模式
+  - 週報進度追蹤表（有進展 + 無進展）：完成度數值旁顯示小色塊標籤 — 橘色 `信`（信心）、藍色 `真`（真實）；未明確設定的舊任務預設顯示 `信`
+  - AsciiDoc 輸出（進度追蹤表、無進展任務表）：百分比值後附加 `[真]` 或 `[信]` 標記
+
+### 修正 (Bug Fixes)
+
+- **Stats 圓餅圖明細表色彩索引修正**
+  - 原本排序後的表格列在查詢原始顏色索引時使用 `Array.findIndex`（O(n²)）且以脆弱的 reference 比較 `data === sortedMain` 判斷來源陣列
+  - 改為 `renderTable` 接收 `origData` 顯式參數，函式內預建 `Map<name, index>`，查詢降為 O(1)
+  - `key` 改為 `${row.name}-${idx}` 防止重名衝突
+
+---
+
 ## [Unreleased] — 2026-03-14
 
 ### 新功能 (Features)

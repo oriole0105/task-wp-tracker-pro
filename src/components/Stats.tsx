@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Box, Paper, Typography, Grid, IconButton, Autocomplete, TextField } from '@mui/material';
+import { Box, Paper, Typography, Grid, IconButton, Autocomplete, TextField, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useTaskStore } from '../store/useTaskStore';
@@ -130,6 +130,44 @@ export const Stats: React.FC = () => {
       return `${name}: ${formatDuration(value)} (${percent}%)`;
   };
 
+  const sortedMain = useMemo(() => [...stats.main].sort((a, b) => b.value - a.value), [stats.main]);
+  const sortedSub = useMemo(() => [...stats.sub].sort((a, b) => b.value - a.value), [stats.sub]);
+
+  const renderTable = (data: { name: string; value: number }[], colors: string[], origData: { name: string; value: number }[]) => {
+    const nameToIdx = new Map(origData.map((item, idx) => [item.name, idx]));
+    return (
+      <TableContainer>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell></TableCell>
+              <TableCell>分類</TableCell>
+              <TableCell align="right">花費時間</TableCell>
+              <TableCell align="right">百分比</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {data.map((row, idx) => {
+              const origIdx = nameToIdx.get(row.name) ?? 0;
+              return (
+                <TableRow key={`${row.name}-${idx}`}>
+                  <TableCell sx={{ width: 16, px: 0.5 }}>
+                    <Box sx={{ width: 12, height: 12, borderRadius: '2px', bgcolor: colors[origIdx % colors.length] }} />
+                  </TableCell>
+                  <TableCell>{row.name}</TableCell>
+                  <TableCell align="right">{formatDuration(row.value)}</TableCell>
+                  <TableCell align="right">
+                    {totalMinutes > 0 ? ((row.value / totalMinutes) * 100).toFixed(1) : '0.0'}%
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    );
+  };
+
   return (
     <Box>
       <Paper sx={{ p: 3, mb: 4 }}>
@@ -232,54 +270,60 @@ export const Stats: React.FC = () => {
 
       <Grid container spacing={4}>
         <Grid size={{ xs: 12, md: 6 }}>
-            <Paper sx={{ p: 3, height: 550 }}>
+            <Paper sx={{ p: 3 }}>
                 <Typography variant="h6" align="center" gutterBottom>按「任務分類」統計</Typography>
-                <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                        <Pie
-                            data={stats.main}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={true}
-                            label={renderLabel}
-                            outerRadius={140}
-                            fill="#8884d8"
-                            dataKey="value"
-                        >
-                            {stats.main.map((_, index) => (
-                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                            ))}
-                        </Pie>
-                        <Tooltip formatter={renderTooltip} />
-                        <Legend />
-                    </PieChart>
-                </ResponsiveContainer>
+                <Box sx={{ height: 450 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                          <Pie
+                              data={stats.main}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={true}
+                              label={renderLabel}
+                              outerRadius={140}
+                              fill="#8884d8"
+                              dataKey="value"
+                          >
+                              {stats.main.map((_, index) => (
+                                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                          </Pie>
+                          <Tooltip formatter={renderTooltip} />
+                          <Legend />
+                      </PieChart>
+                  </ResponsiveContainer>
+                </Box>
+                {sortedMain.length > 0 && renderTable(sortedMain, COLORS, stats.main)}
             </Paper>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-             <Paper sx={{ p: 3, height: 550 }}>
+             <Paper sx={{ p: 3 }}>
                 <Typography variant="h6" align="center" gutterBottom>按「時間分類」統計</Typography>
-                <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                        <Pie
-                            data={stats.sub}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={true}
-                            label={renderLabel}
-                            outerRadius={140}
-                            fill="#82ca9d"
-                            dataKey="value"
-                        >
-                            {stats.sub.map((_, index) => (
-                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                            ))}
-                        </Pie>
-                         <Tooltip formatter={renderTooltip} />
-                         <Legend />
-                    </PieChart>
-                </ResponsiveContainer>
+                <Box sx={{ height: 450 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                          <Pie
+                              data={stats.sub}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={true}
+                              label={renderLabel}
+                              outerRadius={140}
+                              fill="#82ca9d"
+                              dataKey="value"
+                          >
+                              {stats.sub.map((_, index) => (
+                                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                          </Pie>
+                           <Tooltip formatter={renderTooltip} />
+                           <Legend />
+                      </PieChart>
+                  </ResponsiveContainer>
+                </Box>
+                {sortedSub.length > 0 && renderTable(sortedSub, COLORS, stats.sub)}
             </Paper>
         </Grid>
       </Grid>

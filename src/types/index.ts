@@ -77,6 +77,7 @@ export interface Task {
 
   status: TaskStatus;
   completeness?: number; // 0-100，任務整體完成度
+  completenessType?: 'real' | 'confidence'; // 完成度類型：真實百分比 / 信心百分比，預設 'confidence'
   weeklySnapshots?: WeeklySnapshot[];
   pauseReason?: string;
 

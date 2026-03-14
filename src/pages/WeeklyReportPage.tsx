@@ -341,14 +341,24 @@ const WeeklyReportPage: React.FC = () => {
     return <Chip label="→ 持平" size="small" color="default" variant="outlined" />;
   };
 
-  const renderCompleteness = (value: number | undefined, isFallback: boolean) => {
+  const renderCompleteness = (value: number | undefined, isFallback: boolean, completenessType?: 'real' | 'confidence') => {
     if (value === undefined) return <Typography variant="caption" color="text.disabled">尚無記錄</Typography>;
     return (
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
         <Typography variant="body2">{value}%</Typography>
         {isFallback && (
           <Typography variant="caption" color="text.disabled">(目前)</Typography>
         )}
+        <Typography
+          variant="caption"
+          sx={{
+            px: 0.4, py: 0, borderRadius: '3px', fontSize: '0.6rem', lineHeight: 1.4,
+            bgcolor: completenessType === 'real' ? 'primary.main' : 'warning.main',
+            color: 'white',
+          }}
+        >
+          {completenessType === 'real' ? '真' : '信'}
+        </Typography>
       </Box>
     );
   };
@@ -405,9 +415,10 @@ const WeeklyReportPage: React.FC = () => {
       if (delta < 0) return `↓ ${delta}%`;
       return '→ 持平';
     };
-    const fmtVal = (value: number | undefined, isFallback: boolean): string => {
+    const fmtVal = (value: number | undefined, isFallback: boolean, completenessType?: 'real' | 'confidence'): string => {
       if (value === undefined) return '—';
-      return `${value}%${isFallback ? ' (目前)' : ''}`;
+      const typeTag = completenessType === 'real' ? ' [真]' : ' [信]';
+      return `${value}%${isFallback ? ' (目前)' : ''}${typeTag}`;
     };
 
     const prevEndStr = format(prevPeriod.end, 'yyyy-MM-dd');
@@ -437,7 +448,7 @@ const WeeklyReportPage: React.FC = () => {
         lines.push(`|${fmtTitleCell(task.title, task.mainCategory, task.status)}`);
         lines.push(`|${endDateCell}`);
         lines.push(`|${prevTask !== undefined ? `${prevTask}%` : '—'}`);
-        lines.push(`|${fmtVal(thisTask, thisTaskSnap === undefined && thisTask !== undefined)}`);
+        lines.push(`|${fmtVal(thisTask, thisTaskSnap === undefined && thisTask !== undefined, task.completenessType)}`);
         lines.push(`|${fmtDelta(taskDelta)}`);
         lines.push(`|${fmtSpiCell(spiData)}`);
         lines.push(`|${fmtStatusCell(task.status)}`);
@@ -885,9 +896,10 @@ const WeeklyReportPage: React.FC = () => {
       if (delta < 0) return `↓ ${delta}%`;
       return '→ 持平';
     };
-    const fmtVal = (value: number | undefined, isFallback: boolean): string => {
+    const fmtVal = (value: number | undefined, isFallback: boolean, completenessType?: 'real' | 'confidence'): string => {
       if (value === undefined) return '—';
-      return `${value}%${isFallback ? ' (目前)' : ''}`;
+      const typeTag = completenessType === 'real' ? ' [真]' : ' [信]';
+      return `${value}%${isFallback ? ' (目前)' : ''}${typeTag}`;
     };
 
     const lines: string[] = [];
@@ -914,7 +926,7 @@ const WeeklyReportPage: React.FC = () => {
       lines.push(`|${fmtTitleCell(task.title, task.mainCategory, task.status)}`);
       lines.push(`|${endDateCell}`);
       lines.push(`|${noTrack ? '—' : prevTask !== undefined ? `${prevTask}%` : '—'}`);
-      lines.push(`|${noTrack ? '—' : fmtVal(thisTask, thisTaskSnap === undefined && thisTask !== undefined)}`);
+      lines.push(`|${noTrack ? '—' : fmtVal(thisTask, thisTaskSnap === undefined && thisTask !== undefined, task.completenessType)}`);
       lines.push(`|${noTrack ? '—' : fmtDelta(taskDelta)}`);
       lines.push(`|${fmtSpiCell(spiData)}`);
       lines.push(`|${fmtStatusCell(task.status)}`);
@@ -950,9 +962,10 @@ const WeeklyReportPage: React.FC = () => {
     const { withoutProgress, prevEndStr, currStartStr, currEndStr } = progressSplit;
     if (withoutProgress.length === 0) return '';
 
-    const fmtVal = (value: number | undefined, isFallback: boolean): string => {
+    const fmtVal = (value: number | undefined, isFallback: boolean, completenessType?: 'real' | 'confidence'): string => {
       if (value === undefined) return '—';
-      return `${value}%${isFallback ? ' (目前)' : ''}`;
+      const typeTag = completenessType === 'real' ? ' [真]' : ' [信]';
+      return `${value}%${isFallback ? ' (目前)' : ''}${typeTag}`;
     };
 
     const lines: string[] = [];
@@ -984,7 +997,7 @@ const WeeklyReportPage: React.FC = () => {
       lines.push(`|${fmtTitleCell(task.title, task.mainCategory, task.status)}`);
       lines.push(`|${endDateCell}`);
       lines.push(`|${noTrack ? '—' : prevTask !== undefined ? `${prevTask}%` : '—'}`);
-      lines.push(`|${noTrack ? '—' : fmtVal(thisTask, thisTaskSnap === undefined && thisTask !== undefined)}`);
+      lines.push(`|${noTrack ? '—' : fmtVal(thisTask, thisTaskSnap === undefined && thisTask !== undefined, task.completenessType)}`);
       lines.push(`|${fmtSpiCell(spiData)}`);
       lines.push(`|${fmtStatusCell(task.status)}`);
       lines.push(`|${reasonCell}`);
@@ -1468,7 +1481,7 @@ const WeeklyReportPage: React.FC = () => {
                         <TableCell>
                           {noTrack
                             ? <Typography variant="caption" color="text.disabled">—</Typography>
-                            : renderCompleteness(thisTask, thisTaskSnap === undefined && thisTask !== undefined)}
+                            : renderCompleteness(thisTask, thisTaskSnap === undefined && thisTask !== undefined, task.completenessType)}
                         </TableCell>
                         <TableCell>{noTrack ? null : renderDeltaChip(taskDelta)}</TableCell>
                         <TableCell>{spiData ? renderSPI(spiData) : null}</TableCell>
@@ -1671,7 +1684,7 @@ const WeeklyReportPage: React.FC = () => {
                         <TableCell>
                           {noTrack
                             ? <Typography variant="caption" color="text.disabled">—</Typography>
-                            : renderCompleteness(thisTask, thisTaskSnap === undefined && thisTask !== undefined)}
+                            : renderCompleteness(thisTask, thisTaskSnap === undefined && thisTask !== undefined, task.completenessType)}
                         </TableCell>
                         <TableCell>{spiData ? renderSPI(spiData) : null}</TableCell>
                         <TableCell>

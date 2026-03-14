@@ -3,7 +3,8 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, FormControl, InputLabel, Select, MenuItem,
   Grid, Box, Typography, IconButton, Paper, Divider, Chip,
-  FormControlLabel, Checkbox, Collapse, Tooltip, Radio, RadioGroup, FormLabel
+  FormControlLabel, Checkbox, Collapse, Tooltip, Radio, RadioGroup, FormLabel,
+  ToggleButton, ToggleButtonGroup
 } from '@mui/material';
 import Autocomplete from '@mui/material/Autocomplete';
 import { Add, Delete, ContentCopy, Link as LinkIcon, Label as LabelIcon, AccountTree, InfoOutlined, ExpandMore, ExpandLess } from '@mui/icons-material';
@@ -61,6 +62,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
   const [pauseReason, setPauseReason] = useState('');
   const [pauseReasonError, setPauseReasonError] = useState(false);
   const [trackCompleteness, setTrackCompleteness] = useState(true);
+  const [completenessType, setCompletenessType] = useState<'real' | 'confidence'>('confidence');
   const [currentParentId, setCurrentParentId] = useState<string>('');
 
   // --- Snapshot management state ---
@@ -143,6 +145,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setCompleteness(initialData.completeness !== undefined ? initialData.completeness : '');
       setPauseReason(initialData.pauseReason || '');
       setTrackCompleteness(initialData.trackCompleteness !== false);
+      setCompletenessType(initialData.completenessType ?? 'confidence');
       setShowInWbs(initialData.showInWbs !== undefined ? initialData.showInWbs : true);
       setGanttDisplayMode(initialData.ganttDisplayMode ?? 'bar');
       setShowInReport(initialData.showInReport !== false);
@@ -354,6 +357,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       ganttDisplayMode,
       showInReport,
       trackCompleteness,
+      completenessType,
       outputs,
       milestones,
       labels,
@@ -561,18 +565,32 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
 
           {trackCompleteness && (
             <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                label="整體完成度 (%)"
-                fullWidth
-                type="number"
-                placeholder="0–100"
-                inputProps={{ min: 0, max: 100, step: 5 }}
-                value={completeness}
-                onChange={(e) => {
-                  const val = e.target.value === '' ? '' : Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
-                  setCompleteness(val);
-                }}
-              />
+              <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
+                <TextField
+                  label="整體完成度 (%)"
+                  fullWidth
+                  type="number"
+                  placeholder="0–100"
+                  inputProps={{ min: 0, max: 100, step: 5 }}
+                  value={completeness}
+                  onChange={(e) => {
+                    const val = e.target.value === '' ? '' : Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
+                    setCompleteness(val);
+                  }}
+                />
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, flexShrink: 0 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>百分比類別</Typography>
+                  <ToggleButtonGroup
+                    value={completenessType}
+                    exclusive
+                    size="small"
+                    onChange={(_, val) => { if (val) setCompletenessType(val); }}
+                  >
+                    <ToggleButton value="confidence" sx={{ px: 1, py: 0.5, fontSize: '0.7rem' }}>信心</ToggleButton>
+                    <ToggleButton value="real" sx={{ px: 1, py: 0.5, fontSize: '0.7rem' }}>真實</ToggleButton>
+                  </ToggleButtonGroup>
+                </Box>
+              </Box>
             </Grid>
           )}
 
