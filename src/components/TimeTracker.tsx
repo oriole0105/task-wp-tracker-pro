@@ -3,9 +3,9 @@ import {
   Box, Paper, Typography, Button, Divider,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField,
   ToggleButtonGroup, ToggleButton, FormControl, InputLabel, Select, MenuItem, IconButton,
-  Tooltip, FormControlLabel, Switch, Autocomplete
+  Tooltip, FormControlLabel, Switch, Autocomplete, Snackbar, Alert
 } from '@mui/material';
-import { Palette, Height, ChevronLeft, ChevronRight, CalendarMonth, IosShare } from '@mui/icons-material';
+import { Palette, Height, ChevronLeft, ChevronRight, CalendarMonth, IosShare, Today } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers';
 import { useTaskStore } from '../store/useTaskStore';
 import { format, startOfDay, endOfDay, startOfWeek, addDays, isSameDay, addWeeks, subWeeks, subDays } from 'date-fns';
@@ -14,6 +14,7 @@ import { TaskForm } from './TaskForm';
 import type { Timeslot, Task } from '../types';
 import { exportTimeslotsToICS, parseICS } from '../utils/ics';
 import { computeTaskWbsMap } from '../utils/wbs';
+import { findOverlappingTimeslots, formatOverlapMessage } from '../utils/timeslotOverlap';
 
 interface TimeSlot extends Timeslot {
   taskTitle: string;
@@ -131,6 +132,9 @@ export const TimeTracker: React.FC = () => {
   const [quickAddSubCategory, setQuickAddSubCategory] = useState('');
   const [quickAddNote, setQuickAddNote] = useState('');
 
+  // 重疊錯誤提示
+  const [overlapError, setOverlapError] = useState('');
+
   // ICS 批次匯出 Dialog
   const [icsExportDialogOpen, setIcsExportDialogOpen] = useState(false);
   const [icsExportStart, setIcsExportStart] = useState<Date | null>(null);
@@ -172,6 +176,13 @@ export const TimeTracker: React.FC = () => {
     const end = new Date(quickAddDate);
     end.setHours(eh, em, 0, 0);
     if (end <= start) return;
+
+    const overlaps = findOverlappingTimeslots(timeslots, tasks, start.getTime(), end.getTime());
+    if (overlaps.length > 0) {
+      setOverlapError(formatOverlapMessage(overlaps));
+      return;
+    }
+
     addTimeslot({
       taskId: quickAddTaskId || undefined,
       subCategory: quickAddSubCategory,
@@ -242,6 +253,14 @@ export const TimeTracker: React.FC = () => {
         }
       }
 
+      if (newEnd) {
+        const overlaps = findOverlappingTimeslots(timeslots, tasks, newStart.getTime(), newEnd, editingLog.id);
+        if (overlaps.length > 0) {
+          setOverlapError(formatOverlapMessage(overlaps));
+          return;
+        }
+      }
+
       updateTimeslot(editingLog.id, {
         startTime: newStart.getTime(),
         endTime: newEnd,
@@ -290,12 +309,40 @@ export const TimeTracker: React.FC = () => {
         return;
       }
       if (window.confirm(`共解析到 ${parsed.length} 筆時間紀錄，是否全部匯入？`)) {
-        parsed.forEach(p => addTimeslot({
-          startTime: p.startTime,
-          endTime: p.endTime,
-          subCategory: p.subCategory,
-          note: p.note,
-        }));
+        let imported = 0;
+        let skipped = 0;
+        const currentTimeslots = useTaskStore.getState().timeslots;
+        const currentTasks = useTaskStore.getState().tasks;
+        const allTimeslots = [...currentTimeslots];
+
+        parsed.forEach(p => {
+          if (p.endTime) {
+            const overlaps = findOverlappingTimeslots(allTimeslots, currentTasks, p.startTime, p.endTime);
+            if (overlaps.length > 0) {
+              skipped++;
+              return;
+            }
+          }
+          const newTs = {
+            id: crypto.randomUUID(),
+            startTime: p.startTime,
+            endTime: p.endTime,
+            subCategory: p.subCategory,
+            note: p.note,
+          };
+          addTimeslot({
+            startTime: p.startTime,
+            endTime: p.endTime,
+            subCategory: p.subCategory,
+            note: p.note,
+          });
+          allTimeslots.push(newTs);
+          imported++;
+        });
+
+        if (skipped > 0) {
+          setOverlapError(`匯入完成：成功 ${imported} 筆，因時間重疊跳過 ${skipped} 筆。`);
+        }
       }
     };
     reader.readAsText(file);
@@ -319,6 +366,15 @@ export const TimeTracker: React.FC = () => {
               slotProps={{ textField: { size: 'small', sx: { width: 150 } } }}
             />
             <IconButton size="small" onClick={handleNext}><ChevronRight /></IconButton>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<Today />}
+              onClick={() => setSelectedDate(new Date())}
+              sx={{ ml: 0.5 }}
+            >
+              {view === 'day' ? '今天' : '本週'}
+            </Button>
           </Box>
 
           <ToggleButtonGroup
@@ -506,15 +562,20 @@ export const TimeTracker: React.FC = () => {
                             {format(start, 'HH:mm')}-{format(end, 'HH:mm')}
                           </Typography>
                         )}
+                        {showTooltip && slot.note && (
+                          <Typography variant="caption" sx={{ fontSize: '0.65rem', opacity: 0.8, fontStyle: 'italic', mt: 0.25 }} noWrap>
+                            {slot.note}
+                          </Typography>
+                        )}
                       </Box>
                     );
 
-                    return showTooltip ? (
+                    return showTooltip && slot.note ? (
                       <Tooltip
                         key={slot.id}
-                        title={slot.note || '（無說明）'}
+                        title={slot.note}
                         arrow
-                        placement="right"
+                        placement={view === 'day' ? 'top' : 'right'}
                         enterDelay={500}
                       >
                         {slotContent}
@@ -745,6 +806,17 @@ export const TimeTracker: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar
+        open={!!overlapError}
+        autoHideDuration={8000}
+        onClose={() => setOverlapError('')}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert severity="error" onClose={() => setOverlapError('')} variant="filled">
+          {overlapError}
+        </Alert>
+      </Snackbar>
 
       <TaskForm
         open={taskFormOpen}
