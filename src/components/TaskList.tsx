@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Box, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Button, IconButton, Chip, FormControl, InputLabel, Select, MenuItem, Checkbox, ListItemText,
@@ -54,7 +54,7 @@ interface IndexedTask extends Task {
 }
 
 export const TaskList: React.FC = () => {
-  const { tasks, timeslots, mainCategories, deleteTask, duplicateTask, archiveTask, archiveAllDone, undo, reorderTask, importTasksFromJson, updateTask } = useTaskStore();
+  const { tasks, timeslots, mainCategories, deleteTask, duplicateTask, archiveTask, archiveAllDone, undo, reorderTask, importTasksFromJson, updateTask, quickAddAction, setQuickAddAction } = useTaskStore();
 
   const [filterStatus, setFilterStatus] = useState<TaskStatus[]>(['BACKLOG', 'TODO', 'IN_PROGRESS', 'PAUSED']);
   const [selectedMainCats, setSelectedMainCats] = useState<string[]>([]);
@@ -66,6 +66,16 @@ export const TaskList: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
   const [parentTaskId, setParentTaskId] = useState<string | undefined>(undefined);
+
+  // 手機快速新增：從底部導航「＋」按鈕觸發
+  useEffect(() => {
+    if (quickAddAction === 'task') {
+      setEditingTask(undefined);
+      setParentTaskId(undefined);
+      setIsFormOpen(true);
+      setQuickAddAction(null);
+    }
+  }, [quickAddAction, setQuickAddAction]);
 
   const [collapsedTaskIds, setCollapsedTaskIds] = useState<Set<string>>(new Set());
 

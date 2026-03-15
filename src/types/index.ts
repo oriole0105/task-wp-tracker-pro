@@ -27,6 +27,8 @@ export interface Timeslot {
   taskId?: string;      // 可選，無連結 = 未分類
   subCategory: string;  // 時間分類（從 Task 移至此）
   note?: string;
+  createdAt?: number;   // epoch ms，用於跨裝置智慧合併
+  updatedAt?: number;   // epoch ms，用於跨裝置智慧合併
 }
 
 export interface OutputType {
@@ -58,6 +60,8 @@ export interface WorkOutput {
   mainCategory?: string;
   subCategory?: string;
   weeklySnapshots?: WeeklySnapshot[];
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 export interface Task {
@@ -91,6 +95,8 @@ export interface Task {
   milestones?: Milestone[];
   archived?: boolean;
   archivedAt?: number;
+  createdAt?: number;   // epoch ms，用於跨裝置智慧合併
+  updatedAt?: number;   // epoch ms，用於跨裝置智慧合併
 }
 
 /** JSON 批次匯入的任務格式（樹狀結構，children 為子任務） */

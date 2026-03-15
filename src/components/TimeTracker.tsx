@@ -33,7 +33,7 @@ type ColorMode = 'main' | 'sub';
 type ZoomLevel = 60 | 120;
 
 export const TimeTracker: React.FC = () => {
-  const { tasks, timeslots, subCategories, addTimeslot, updateTimeslot, deleteTimeslot } = useTaskStore();
+  const { tasks, timeslots, subCategories, addTimeslot, updateTimeslot, deleteTimeslot, quickAddAction, setQuickAddAction } = useTaskStore();
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [view, setView] = useState<ViewType>('week5');
   const [colorMode, setColorMode] = useState<ColorMode>('sub');
@@ -42,6 +42,14 @@ export const TimeTracker: React.FC = () => {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const pixelsPerMinute = hourHeight / 60;
+
+  // 手機快速新增：從底部導航「＋」按鈕觸發
+  useEffect(() => {
+    if (quickAddAction === 'timeslot') {
+      setQuickAddOpen(true);
+      setQuickAddAction(null);
+    }
+  }, [quickAddAction, setQuickAddAction]);
 
   const handlePrev = () => {
     if (!selectedDate) return;

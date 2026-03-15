@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Box, Typography, Button, TextField, Paper,
   List, ListItem, ListItemText, IconButton, Alert,
   Grid, Card, CardContent, Chip, Checkbox, FormControlLabel, Divider,
 } from '@mui/material';
-import { Delete, Edit, Add, Download, Save, Cancel, Backup, Restore, BeachAccess, Tune, Person } from '@mui/icons-material';
+import { Delete, Edit, Add, Download, Save, Cancel, Backup, Restore, BeachAccess, Tune, Person, MergeType, PhoneAndroid } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers';
 import { format } from 'date-fns';
 import { useTaskStore } from '../store/useTaskStore';
@@ -17,7 +17,7 @@ export const CategoryManager: React.FC = () => {
     addOutputType, updateOutputType, deleteOutputType,
     addHoliday, deleteHoliday,
     addMember, updateMember, deleteMember,
-    importFullData, importSettings,
+    importFullData, importSettings, mergeImport,
   } = useTaskStore();
 
   const [newMain, setNewMain] = useState('');
@@ -112,6 +112,54 @@ export const CategoryManager: React.FC = () => {
   };
 
 
+  // 差異匯出：匯出近 N 天新建或修改的 tasks + timeslots
+  const [deltaExportDays, setDeltaExportDays] = useState(7);
+  const handleDeltaExport = () => {
+    const since = Date.now() - deltaExportDays * 24 * 60 * 60 * 1000;
+    const deltaTasks = tasks.filter(t => (t.createdAt ?? 0) >= since || (t.updatedAt ?? 0) >= since);
+    const deltaTimeslots = timeslots.filter(ts => (ts.createdAt ?? 0) >= since || (ts.updatedAt ?? 0) >= since);
+    if (deltaTasks.length === 0 && deltaTimeslots.length === 0) {
+      setError(`過去 ${deltaExportDays} 天內沒有新增或修改的資料。`);
+      return;
+    }
+    const data = { tasks: deltaTasks, timeslots: deltaTimeslots, exportedAt: Date.now(), deltaDays: deltaExportDays };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `task_tracker_delta_${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    setSuccess(`差異匯出成功：${deltaTasks.length} 筆任務、${deltaTimeslots.length} 筆時段。`);
+  };
+
+  // 智慧合併匯入
+  const mergeFileRef = useRef<HTMLInputElement>(null);
+  const handleMergeImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const parsed = JSON.parse(e.target?.result as string);
+        const incoming = { tasks: parsed.tasks, timeslots: parsed.timeslots };
+        if (!Array.isArray(incoming.tasks) && !Array.isArray(incoming.timeslots)) {
+          throw new Error('JSON 檔案中未找到 tasks 或 timeslots 陣列。');
+        }
+        const taskCount = incoming.tasks?.length ?? 0;
+        const tsCount = incoming.timeslots?.length ?? 0;
+        if (!window.confirm(`即將合併匯入 ${taskCount} 筆任務、${tsCount} 筆時段。\n\n同 ID 資料將以較新版本覆蓋，新 ID 資料將直接加入。確定要執行嗎？`)) return;
+        const stats = mergeImport(incoming);
+        setSuccess(`合併匯入完成：新增 ${stats.tasksAdded} 筆任務 + ${stats.timeslotsAdded} 筆時段，更新 ${stats.tasksUpdated} 筆任務 + ${stats.timeslotsUpdated} 筆時段。`);
+        setError(null);
+      } catch (err: any) {
+        setError(`合併匯入失敗: ${err.message}`);
+        setSuccess(null);
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  };
+
   const startEdit = (type: 'main' | 'sub', name: string) => {
     setEditing({ type, oldName: name, newName: name });
   };
@@ -199,6 +247,33 @@ export const CategoryManager: React.FC = () => {
           <Button variant="outlined" component="label" startIcon={<Restore />} color="warning">
             還原備份資料
             <input type="file" hidden accept=".json" onChange={handleFullImport} />
+          </Button>
+        </Box>
+      </Paper>
+
+      <Paper sx={{ p: 3, mb: 4, border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
+        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <PhoneAndroid color="primary" /> 跨裝置資料同步
+        </Typography>
+        <Typography variant="body2" color="textSecondary" paragraph>
+          在手機/平板上新增的任務與時段，可匯出差異資料後在電腦端合併匯入。合併時同 ID 資料以較新版本為準，新 ID 資料直接加入。
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+          <TextField
+            size="small"
+            type="number"
+            label="匯出近 N 天"
+            value={deltaExportDays}
+            onChange={(e) => setDeltaExportDays(Math.max(1, parseInt(e.target.value) || 1))}
+            sx={{ width: 120 }}
+            slotProps={{ htmlInput: { min: 1 } }}
+          />
+          <Button variant="contained" startIcon={<Download />} onClick={handleDeltaExport} color="info">
+            差異匯出
+          </Button>
+          <Button variant="outlined" component="label" startIcon={<MergeType />} color="success">
+            合併匯入
+            <input type="file" hidden accept=".json" ref={mergeFileRef} onChange={handleMergeImport} />
           </Button>
         </Box>
       </Paper>

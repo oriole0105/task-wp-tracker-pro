@@ -109,6 +109,13 @@ interface TaskState {
   // 最近一次自動狀態變更（供 UI 顯示 toast）
   _lastAutoStatusChange: StatusChangeInfo | null;
   clearLastAutoStatusChange: () => void;
+
+  // 智慧合併匯入（手機 → 電腦）
+  mergeImport: (data: { tasks?: Task[], timeslots?: Timeslot[] }) => { tasksAdded: number; tasksUpdated: number; timeslotsAdded: number; timeslotsUpdated: number };
+
+  // 手機快速新增（不 persist）
+  quickAddAction: 'task' | 'timeslot' | null;
+  setQuickAddAction: (action: 'task' | 'timeslot' | null) => void;
 }
 
 export const useTaskStore = create<TaskState>()(
@@ -123,8 +130,11 @@ export const useTaskStore = create<TaskState>()(
       members: [{ id: 'self', name: '', isSelf: true }],
       _history: [],
       darkMode: false,
+      quickAddAction: null,
+      setQuickAddAction: (action) => set({ quickAddAction: action }),
 
       addTask: (taskData) => {
+        const now = Date.now();
         const newTask: Task = {
           ...taskData,
           id: uuidv4(),
@@ -134,6 +144,8 @@ export const useTaskStore = create<TaskState>()(
           ganttDisplayMode: taskData.ganttDisplayMode ?? 'bar',
           showInReport: taskData.showInReport ?? true,
           trackCompleteness: taskData.trackCompleteness ?? true,
+          createdAt: now,
+          updatedAt: now,
         };
         set((state) => ({
           _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
@@ -165,6 +177,7 @@ export const useTaskStore = create<TaskState>()(
 
       importTasksFromJson: (jsonTasks, parentId) => {
         const flatTasks: Task[] = [];
+        const now = Date.now();
         const flatten = (items: JsonImportTask[], pid?: string) => {
           for (const item of items) {
             const id = uuidv4();
@@ -184,6 +197,8 @@ export const useTaskStore = create<TaskState>()(
               parentId: pid,
               status: item.status ?? 'BACKLOG',
               outputs: [],
+              createdAt: now,
+              updatedAt: now,
             });
             if (item.children?.length) {
               flatten(item.children, id);
@@ -199,9 +214,10 @@ export const useTaskStore = create<TaskState>()(
 
       updateTask: (id, updates) => {
         set((state) => {
+          const now = Date.now();
           let newTasks = state.tasks.map((t) => {
             if (t.id !== id) return t;
-            const updated = { ...t, ...updates };
+            const updated = { ...t, ...updates, updatedAt: now };
             // 僅在 trackCompleteness !== false 時自動建立快照
             if (updates.completeness !== undefined && t.trackCompleteness !== false) {
               updated.weeklySnapshots = upsertSnapshot(t.weeklySnapshots, getCurrentWeekStart(), updates.completeness);
@@ -237,7 +253,8 @@ export const useTaskStore = create<TaskState>()(
 
       // Timeslot Actions
       addTimeslot: (data) => {
-        const newTimeslot: Timeslot = { ...data, id: uuidv4() };
+        const now = Date.now();
+        const newTimeslot: Timeslot = { ...data, id: uuidv4(), createdAt: now, updatedAt: now };
         set((state) => ({
           _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
           timeslots: [...state.timeslots, newTimeslot],
@@ -247,7 +264,7 @@ export const useTaskStore = create<TaskState>()(
       updateTimeslot: (id, updates) => {
         set((state) => ({
           _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
-          timeslots: state.timeslots.map(ts => ts.id === id ? { ...ts, ...updates } : ts),
+          timeslots: state.timeslots.map(ts => ts.id === id ? { ...ts, ...updates, updatedAt: Date.now() } : ts),
         }));
       },
 
@@ -283,9 +300,10 @@ export const useTaskStore = create<TaskState>()(
       updateWorkOutput: (taskId, outputId, updates) => set(s => ({
         tasks: s.tasks.map(t => t.id === taskId ? {
           ...t,
+          updatedAt: Date.now(),
           outputs: (t.outputs || []).map(o => {
             if (o.id !== outputId) return o;
-            const updated = { ...o, ...updates };
+            const updated = { ...o, ...updates, updatedAt: Date.now() };
             if (updates.completeness !== undefined) {
               const val = parseInt(updates.completeness ?? '0') || 0;
               updated.weeklySnapshots = upsertSnapshot(o.weeklySnapshots, getCurrentWeekStart(), val);
@@ -463,6 +481,54 @@ export const useTaskStore = create<TaskState>()(
             return { ...t, weeklySnapshots: [...snaps, { weekStart, completeness: t.completeness ?? 0, note: note || undefined }] };
           }),
         }));
+      },
+
+      mergeImport: (data) => {
+        const state = get();
+        const stats = { tasksAdded: 0, tasksUpdated: 0, timeslotsAdded: 0, timeslotsUpdated: 0 };
+
+        // Merge tasks
+        let mergedTasks = [...state.tasks];
+        if (data.tasks) {
+          for (const incoming of data.tasks) {
+            const idx = mergedTasks.findIndex(t => t.id === incoming.id);
+            if (idx === -1) {
+              mergedTasks.push(incoming);
+              stats.tasksAdded++;
+            } else {
+              const existing = mergedTasks[idx];
+              if ((incoming.updatedAt ?? 0) > (existing.updatedAt ?? 0)) {
+                mergedTasks[idx] = incoming;
+                stats.tasksUpdated++;
+              }
+            }
+          }
+        }
+
+        // Merge timeslots
+        let mergedTimeslots = [...state.timeslots];
+        if (data.timeslots) {
+          for (const incoming of data.timeslots) {
+            const idx = mergedTimeslots.findIndex(ts => ts.id === incoming.id);
+            if (idx === -1) {
+              mergedTimeslots.push(incoming);
+              stats.timeslotsAdded++;
+            } else {
+              const existing = mergedTimeslots[idx];
+              if ((incoming.updatedAt ?? 0) > (existing.updatedAt ?? 0)) {
+                mergedTimeslots[idx] = incoming;
+                stats.timeslotsUpdated++;
+              }
+            }
+          }
+        }
+
+        set({
+          _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
+          tasks: mergedTasks,
+          timeslots: mergedTimeslots,
+        });
+        return stats;
       },
 
       _lastAutoStatusChange: null,

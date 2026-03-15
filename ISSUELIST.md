@@ -224,6 +224,25 @@
   - `src/pages/WeeklyReportPage.tsx`：`ganttSource` 渲染 `[title] happens date` 及顏色標記，過濾 `showInGantt=true` 且在 `ganttRange` 內的里程碑
   - `src/store/useTaskStore.ts`：`duplicateTask` 加入 `milestones: []`
 
+### ENH-016 — 手機底部導航列（響應式導航）
+- **狀態**：✅ 已解決（2026-03-15）
+- **優先度**：高
+- **描述**：螢幕 < 600px 時切換為底部導航列 + 精簡頂部列 + FAB 快速新增按鈕
+- **實作**：
+  - `src/components/MobileBottomNav.tsx`：新建元件，BottomNavigation + FAB + Drawer
+  - `src/components/Layout.tsx`：useMediaQuery 條件渲染桌面/手機版導航
+  - `src/store/useTaskStore.ts`：新增 `quickAddAction` 供跨頁面觸發表單
+  - `src/components/TimeTracker.tsx`、`src/components/TaskList.tsx`：監聽 quickAddAction
+
+### ENH-017 — 跨裝置資料同步（智慧合併）
+- **狀態**：✅ 已解決（2026-03-15）
+- **優先度**：高
+- **描述**：手機端差異匯出 + 電腦端智慧合併匯入，支援 Task/Timeslot 的 createdAt/updatedAt 時間戳比對
+- **實作**：
+  - `src/types/index.ts`：Task、Timeslot、WorkOutput 新增 `createdAt`/`updatedAt`
+  - `src/store/useTaskStore.ts`：所有 add/update 動作自動填入時間戳；新增 `mergeImport` 合併邏輯
+  - `src/components/CategoryManager.tsx`：新增「跨裝置資料同步」UI 區塊（差異匯出 + 合併匯入）
+
 ---
 
 ## 統計
@@ -231,7 +250,7 @@
 | 類別 | 數量 |
 |---|---|
 | ✅ 已解決 BUG | 7 |
-| ✅ 已解決功能 | 8 |
+| ✅ 已解決功能 | 10 |
 | 📋 待處理功能 | 1 |
 | 💡 建議功能 | 3 |
 | 📋 技術債 | 1 |
