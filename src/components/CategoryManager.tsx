@@ -1,13 +1,16 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   Box, Typography, Button, TextField, Paper,
   List, ListItem, ListItemText, IconButton, Alert,
   Grid, Card, CardContent, Chip, Checkbox, FormControlLabel, Divider,
+  Collapse, Autocomplete,
 } from '@mui/material';
-import { Delete, Edit, Add, Download, Save, Cancel, Backup, Restore, BeachAccess, Tune, Person, MergeType, PhoneAndroid } from '@mui/icons-material';
+import { Delete, Edit, Add, Download, Save, Cancel, Backup, Restore, BeachAccess, Tune, Person, MergeType, PhoneAndroid, ExpandMore, ExpandLess, HelpOutline, QrCode, QrCodeScanner } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers';
 import { format } from 'date-fns';
 import { useTaskStore } from '../store/useTaskStore';
+import { computeTaskWbsMap } from '../utils/wbs';
+import { SettingsQrDialog } from './SettingsQrDialog';
 
 export const CategoryManager: React.FC = () => {
   const {
@@ -38,26 +41,44 @@ export const CategoryManager: React.FC = () => {
   const [newMemberName, setNewMemberName] = useState('');
   const [selfNameInput, setSelfNameInput] = useState<string | null>(null); // null = not editing
 
-  const handleFullExport = () => {
-    const data = { tasks, timeslots, mainCategories, subCategories, outputTypes, holidays, members };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  // 設定 QR Code 對話框
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [qrDialogMode, setQrDialogMode] = useState<'show' | 'scan'>('show');
+  const currentSettings = { mainCategories, subCategories, outputTypes, holidays, members };
+
+  // 手機端優先用 Web Share API 丟給其他 app；桌機 fallback 為一般下載
+  const shareOrDownload = async (blob: Blob, filename: string): Promise<boolean> => {
+    const file = new File([blob], filename, { type: blob.type });
+    if (navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: filename });
+        return true;
+      } catch (err) {
+        if ((err as DOMException).name === 'AbortError') return false; // 使用者取消，不顯示成功
+        // 其他錯誤（瀏覽器限制等）fallthrough 改走下載
+      }
+    }
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `task_tracker_backup_${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
-    setSuccess('全系統資料匯出成功。');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    return true;
   };
 
-  const handleSettingsExport = () => {
+  const handleFullExport = async () => {
+    const data = { tasks, timeslots, mainCategories, subCategories, outputTypes, holidays, members };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const filename = `task_tracker_backup_${new Date().toISOString().split('T')[0]}.json`;
+    if (await shareOrDownload(blob, filename)) setSuccess('全系統資料匯出成功。');
+  };
+
+  const handleSettingsExport = async () => {
     const data = { mainCategories, subCategories, outputTypes, holidays, members };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `task_tracker_settings_${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
-    setSuccess('設定匯出成功。');
+    const filename = `task_tracker_settings_${new Date().toISOString().split('T')[0]}.json`;
+    if (await shareOrDownload(blob, filename)) setSuccess('設定匯出成功。');
   };
 
   const handleSettingsImport = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -112,24 +133,63 @@ export const CategoryManager: React.FC = () => {
   };
 
 
+  // 跨裝置說明展開狀態
+  const [syncGuideOpen, setSyncGuideOpen] = useState(false);
+
   // 差異匯出：匯出近 N 天新建或修改的 tasks + timeslots
   const [deltaExportDays, setDeltaExportDays] = useState(7);
-  const handleDeltaExport = () => {
+  const [deltaParentTaskId, setDeltaParentTaskId] = useState<string | null>(null);
+
+  // 供父節點選單使用：非封存任務依 WBS 排序
+  const { wbsNumbers: deltaWbsNumbers, sorted: deltaSortedTasks } = useMemo(
+    () => computeTaskWbsMap(tasks.filter(t => !t.archived)),
+    [tasks]
+  );
+
+  const handleDeltaExport = async () => {
+    let deltaTasks: typeof tasks;
+    let deltaTimeslots: typeof timeslots;
+
     const since = Date.now() - deltaExportDays * 24 * 60 * 60 * 1000;
-    const deltaTasks = tasks.filter(t => (t.createdAt ?? 0) >= since || (t.updatedAt ?? 0) >= since);
-    const deltaTimeslots = timeslots.filter(ts => (ts.createdAt ?? 0) >= since || (ts.updatedAt ?? 0) >= since);
+
+    if (deltaParentTaskId) {
+      // 遞迴收集指定父節點及所有子孫任務
+      const subtreeIds = new Set<string>();
+      const collect = (id: string) => {
+        subtreeIds.add(id);
+        tasks.filter(t => t.parentId === id).forEach(c => collect(c.id));
+      };
+      collect(deltaParentTaskId);
+      deltaTasks = tasks.filter(t =>
+        subtreeIds.has(t.id) && ((t.createdAt ?? 0) >= since || (t.updatedAt ?? 0) >= since)
+      );
+      deltaTimeslots = timeslots.filter(ts =>
+        ts.taskId != null && subtreeIds.has(ts.taskId) &&
+        ((ts.createdAt ?? 0) >= since || (ts.updatedAt ?? 0) >= since)
+      );
+    } else {
+      deltaTasks = tasks.filter(t => (t.createdAt ?? 0) >= since || (t.updatedAt ?? 0) >= since);
+      deltaTimeslots = timeslots.filter(ts => (ts.createdAt ?? 0) >= since || (ts.updatedAt ?? 0) >= since);
+    }
+
     if (deltaTasks.length === 0 && deltaTimeslots.length === 0) {
-      setError(`過去 ${deltaExportDays} 天內沒有新增或修改的資料。`);
+      setError(
+        deltaParentTaskId
+          ? '指定節點下沒有任何任務或時段資料。'
+          : `過去 ${deltaExportDays} 天內沒有新增或修改的資料。`
+      );
       return;
     }
-    const data = { tasks: deltaTasks, timeslots: deltaTimeslots, exportedAt: Date.now(), deltaDays: deltaExportDays };
+    const data = {
+      tasks: deltaTasks,
+      timeslots: deltaTimeslots,
+      exportedAt: Date.now(),
+      ...(deltaParentTaskId ? { parentTaskId: deltaParentTaskId } : { deltaDays: deltaExportDays }),
+    };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `task_tracker_delta_${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
-    setSuccess(`差異匯出成功：${deltaTasks.length} 筆任務、${deltaTimeslots.length} 筆時段。`);
+    const filename = `task_tracker_delta_${new Date().toISOString().split('T')[0]}.json`;
+    if (await shareOrDownload(blob, filename))
+      setSuccess(`差異匯出成功：${deltaTasks.length} 筆任務、${deltaTimeslots.length} 筆時段。`);
   };
 
   // 智慧合併匯入
@@ -258,7 +318,42 @@ export const CategoryManager: React.FC = () => {
         <Typography variant="body2" color="textSecondary" paragraph>
           在手機/平板上新增的任務與時段，可匯出差異資料後在電腦端合併匯入。合併時同 ID 資料以較新版本為準，新 ID 資料直接加入。
         </Typography>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+
+        {/* 使用說明（可展開） */}
+        <Button
+          size="small"
+          startIcon={<HelpOutline />}
+          endIcon={syncGuideOpen ? <ExpandLess /> : <ExpandMore />}
+          onClick={() => setSyncGuideOpen(!syncGuideOpen)}
+          sx={{ mb: 1, textTransform: 'none' }}
+          color="inherit"
+          variant="text"
+        >
+          如何使用？（點擊展開）
+        </Button>
+        <Collapse in={syncGuideOpen}>
+          <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, p: 2, mb: 2 }}>
+            <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold' }}>
+              第一次設定手機：
+            </Typography>
+            <Typography variant="body2" component="ol" sx={{ pl: 2, m: 0 }}>
+              <li>電腦端：系統設定 → <strong>匯出設定</strong> → 下載 settings JSON</li>
+              <li>將檔案傳送到手機（AirDrop / LINE / Email / 雲端硬碟）</li>
+              <li>手機端：系統設定 → <strong>匯入設定</strong></li>
+            </Typography>
+            <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', mt: 1.5 }}>
+              日常使用（手機新增資料後同步回電腦）：
+            </Typography>
+            <Typography variant="body2" component="ol" sx={{ pl: 2, m: 0 }}>
+              <li>手機上新增任務 / 時段</li>
+              <li>手機端：系統設定 → <strong>差異匯出</strong>（匯出近 N 天修改的資料）</li>
+              <li>將 delta JSON 傳送到電腦</li>
+              <li>電腦端：系統設定 → <strong>合併匯入</strong></li>
+            </Typography>
+          </Box>
+        </Collapse>
+
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <TextField
             size="small"
             type="number"
@@ -268,10 +363,25 @@ export const CategoryManager: React.FC = () => {
             sx={{ width: 120 }}
             slotProps={{ htmlInput: { min: 1 } }}
           />
-          <Button variant="contained" startIcon={<Download />} onClick={handleDeltaExport} color="info">
+          <Autocomplete
+            size="small"
+            options={deltaSortedTasks}
+            getOptionLabel={(t) => {
+              const wbs = deltaWbsNumbers.get(t.id);
+              return wbs ? `${wbs} ${t.title}` : t.title;
+            }}
+            value={deltaSortedTasks.find(t => t.id === deltaParentTaskId) ?? null}
+            onChange={(_, val) => setDeltaParentTaskId(val?.id ?? null)}
+            renderInput={(params) => (
+              <TextField {...params} label="指定父節點（選填）" placeholder="預設＝全部" />
+            )}
+            sx={{ minWidth: 260 }}
+            clearOnEscape
+          />
+          <Button variant="contained" startIcon={<Download />} onClick={handleDeltaExport} color="info" sx={{ mt: 0.25 }}>
             差異匯出
           </Button>
-          <Button variant="outlined" component="label" startIcon={<MergeType />} color="success">
+          <Button variant="outlined" component="label" startIcon={<MergeType />} color="success" sx={{ mt: 0.25 }}>
             合併匯入
             <input type="file" hidden accept=".json" ref={mergeFileRef} onChange={handleMergeImport} />
           </Button>
@@ -288,13 +398,30 @@ export const CategoryManager: React.FC = () => {
         <Typography variant="body2" color="textSecondary" paragraph>
           匯出分類、工作產出類型、假日與人員名單。不含任務與時間紀錄資料。
         </Typography>
-        <Box sx={{ display: 'flex', gap: 2 }}>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <Button variant="contained" startIcon={<Download />} onClick={handleSettingsExport} color="secondary">
             匯出設定
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<QrCode />}
+            onClick={() => { setQrDialogMode('show'); setQrDialogOpen(true); }}
+            color="secondary"
+            sx={{ bgcolor: 'secondary.dark' }}
+          >
+            顯示 QR Code
           </Button>
           <Button variant="outlined" component="label" startIcon={<Restore />} color="secondary">
             匯入設定
             <input type="file" hidden accept=".json" onChange={handleSettingsImport} />
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<QrCodeScanner />}
+            onClick={() => { setQrDialogMode('scan'); setQrDialogOpen(true); }}
+            color="secondary"
+          >
+            掃描 / 貼上匯入
           </Button>
         </Box>
       </Paper>
@@ -558,6 +685,20 @@ export const CategoryManager: React.FC = () => {
           註：修改或刪除分類將會同步更新所有已使用該分類的現有任務。
         </Typography>
       </Paper>
+
+      <SettingsQrDialog
+        open={qrDialogOpen}
+        onClose={() => setQrDialogOpen(false)}
+        mode={qrDialogMode}
+        settingsData={qrDialogMode === 'show' ? currentSettings : undefined}
+        onImport={(data) => {
+          if (window.confirm('這將覆蓋目前的分類、產出類型、假日與人員名單設定（不影響任務資料）。確定要執行嗎？')) {
+            importSettings(data as Parameters<typeof importSettings>[0]);
+            setError(null);
+          }
+        }}
+        onSuccess={(msg) => { setSuccess(msg); setError(null); }}
+      />
     </Box>
   );
 };

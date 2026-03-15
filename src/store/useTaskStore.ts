@@ -539,7 +539,7 @@ export const useTaskStore = create<TaskState>()(
     }),
     {
       name: 'task-storage',
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         tasks: state.tasks,
@@ -562,6 +562,19 @@ export const useTaskStore = create<TaskState>()(
             }
             return t;
           });
+        }
+        if (version < 2) {
+          const now = Date.now();
+          if (Array.isArray(state.tasks)) {
+            state.tasks = (state.tasks as Record<string, unknown>[]).map((t) =>
+              t.createdAt == null ? { ...t, createdAt: now, updatedAt: now } : t
+            );
+          }
+          if (Array.isArray(state.timeslots)) {
+            state.timeslots = (state.timeslots as Record<string, unknown>[]).map((ts) =>
+              ts.createdAt == null ? { ...ts, createdAt: now, updatedAt: now } : ts
+            );
+          }
         }
         return state;
       },
