@@ -29,7 +29,7 @@ const START_HOUR = 0;
 const END_HOUR = 23;
 const HEADER_HEIGHT = 40;
 
-type ViewType = 'day' | 'week5' | 'week7';
+type ViewType = 'day' | 'day2' | 'week5' | 'week7';
 type ColorMode = 'main' | 'sub';
 type ZoomLevel = 60 | 120;
 
@@ -57,18 +57,21 @@ export const TimeTracker: React.FC = () => {
   const handlePrev = () => {
     if (!selectedDate) return;
     if (view === 'day') setSelectedDate(subDays(selectedDate, 1));
+    else if (view === 'day2') setSelectedDate(subDays(selectedDate, 2));
     else setSelectedDate(subWeeks(selectedDate, 1));
   };
 
   const handleNext = () => {
     if (!selectedDate) return;
     if (view === 'day') setSelectedDate(addDays(selectedDate, 1));
+    else if (view === 'day2') setSelectedDate(addDays(selectedDate, 2));
     else setSelectedDate(addWeeks(selectedDate, 1));
   };
 
   const displayDates = useMemo(() => {
     if (!selectedDate) return [];
     if (view === 'day') return [startOfDay(selectedDate)];
+    if (view === 'day2') return [startOfDay(selectedDate), addDays(startOfDay(selectedDate), 1)];
     const sunday = startOfWeek(selectedDate, { weekStartsOn: 0 });
     if (view === 'week5') {
       return [1, 2, 3, 4, 5].map(i => addDays(sunday, i));
@@ -384,7 +387,7 @@ export const TimeTracker: React.FC = () => {
               onClick={() => setSelectedDate(new Date())}
               sx={{ ml: 0.5 }}
             >
-              {view === 'day' ? '今天' : '本週'}
+              {view === 'day' || view === 'day2' ? '今天' : '本週'}
             </Button>
           </Box>
 
@@ -396,6 +399,7 @@ export const TimeTracker: React.FC = () => {
             color="primary"
           >
             <ToggleButton value="day">日</ToggleButton>
+            <ToggleButton value="day2">2日</ToggleButton>
             <ToggleButton value="week5">週 (5天)</ToggleButton>
             <ToggleButton value="week7">週 (7天)</ToggleButton>
           </ToggleButtonGroup>
@@ -459,7 +463,7 @@ export const TimeTracker: React.FC = () => {
               return (
                 <Box key={idx} sx={{
                   flexGrow: 1, flexBasis: 0,
-                  minWidth: view === 'day' ? '100%' : (view === 'week5' ? 150 : 120),
+                  minWidth: view === 'day' ? '100%' : (view === 'day2' ? '50%' : (view === 'week5' ? 150 : 120)),
                   borderRight: 1, borderColor: 'divider',
                   height: HEADER_HEIGHT,
                   bgcolor: isToday ? 'rgba(25, 118, 210, 0.18)' : 'action.hover',
@@ -499,7 +503,7 @@ export const TimeTracker: React.FC = () => {
               return (
                 <Box key={idx} sx={{
                   flexGrow: 1, flexBasis: 0,
-                  minWidth: view === 'day' ? '100%' : (view === 'week5' ? 150 : 120),
+                  minWidth: view === 'day' ? '100%' : (view === 'day2' ? '50%' : (view === 'week5' ? 150 : 120)),
                   borderRight: 1, borderColor: 'divider',
                   position: 'relative',
                   bgcolor: isToday ? 'rgba(25, 118, 210, 0.04)' : 'transparent'
