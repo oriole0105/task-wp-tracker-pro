@@ -4,10 +4,10 @@ import {
   TextField, Button, FormControl, InputLabel, Select, MenuItem,
   Grid, Box, Typography, IconButton, Paper, Divider, Chip,
   FormControlLabel, Checkbox, Collapse, Tooltip, Radio, RadioGroup, FormLabel,
-  ToggleButton, ToggleButtonGroup
+  ToggleButton, ToggleButtonGroup, useTheme, useMediaQuery, AppBar, Toolbar,
 } from '@mui/material';
 import Autocomplete from '@mui/material/Autocomplete';
-import { Add, Delete, ContentCopy, Link as LinkIcon, Label as LabelIcon, AccountTree, InfoOutlined, ExpandMore, ExpandLess } from '@mui/icons-material';
+import { Add, Delete, ContentCopy, Link as LinkIcon, Label as LabelIcon, AccountTree, InfoOutlined, ExpandMore, ExpandLess, Close } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { format, startOfWeek, addDays, parseISO } from 'date-fns';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -38,6 +38,8 @@ interface TaskFormProps {
 }
 
 export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, parentId }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { tasks, timeslots, mainCategories, outputTypes, members, addTask, updateTask, updateTaskSnapshots, getTaskById } = useTaskStore();
   const memberNames = members.map(m => m.name).filter(n => n.trim() !== '');
 
@@ -381,10 +383,23 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        {initialData ? '編輯任務' : '建立任務'}
-      </DialogTitle>
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth fullScreen={isMobile}>
+      {isMobile ? (
+        <AppBar sx={{ position: 'relative' }}>
+          <Toolbar variant="dense">
+            <IconButton edge="start" color="inherit" onClick={onClose} size="small">
+              <Close />
+            </IconButton>
+            <Typography variant="subtitle1" sx={{ ml: 1, flex: 1, fontWeight: 600 }}>
+              {initialData ? '編輯任務' : '建立任務'}
+            </Typography>
+          </Toolbar>
+        </AppBar>
+      ) : (
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {initialData ? '編輯任務' : '建立任務'}
+        </DialogTitle>
+      )}
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
           {/* 任務名稱 */}

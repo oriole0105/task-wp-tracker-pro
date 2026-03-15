@@ -3,9 +3,10 @@ import {
   Box, Paper, Typography, Button, Divider,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField,
   ToggleButtonGroup, ToggleButton, FormControl, InputLabel, Select, MenuItem, IconButton,
-  Tooltip, FormControlLabel, Switch, Autocomplete, Snackbar, Alert
+  Tooltip, FormControlLabel, Switch, Autocomplete, Snackbar, Alert,
+  useTheme, useMediaQuery, AppBar, Toolbar,
 } from '@mui/material';
-import { Palette, Height, ChevronLeft, ChevronRight, CalendarMonth, IosShare, Today } from '@mui/icons-material';
+import { Palette, Height, ChevronLeft, ChevronRight, CalendarMonth, IosShare, Today, Close } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers';
 import { useTaskStore } from '../store/useTaskStore';
 import { format, startOfDay, endOfDay, startOfWeek, addDays, isSameDay, addWeeks, subWeeks, subDays } from 'date-fns';
@@ -33,6 +34,8 @@ type ColorMode = 'main' | 'sub';
 type ZoomLevel = 60 | 120;
 
 export const TimeTracker: React.FC = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { tasks, timeslots, subCategories, addTimeslot, updateTimeslot, deleteTimeslot, quickAddAction, setQuickAddAction } = useTaskStore();
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [view, setView] = useState<ViewType>('week5');
@@ -611,8 +614,17 @@ export const TimeTracker: React.FC = () => {
       </Paper>
 
       {/* 編輯時間紀錄 Dialog */}
-      <Dialog open={!!editingLog} onClose={() => setEditingLog(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>編輯時間紀錄</DialogTitle>
+      <Dialog open={!!editingLog} onClose={() => setEditingLog(null)} maxWidth="xs" fullWidth fullScreen={isMobile}>
+        {isMobile ? (
+          <AppBar sx={{ position: 'relative' }}>
+            <Toolbar variant="dense">
+              <IconButton edge="start" color="inherit" onClick={() => setEditingLog(null)} size="small"><Close /></IconButton>
+              <Typography variant="subtitle1" sx={{ ml: 1, flex: 1, fontWeight: 600 }}>編輯時間紀錄</Typography>
+            </Toolbar>
+          </AppBar>
+        ) : (
+          <DialogTitle>編輯時間紀錄</DialogTitle>
+        )}
         <DialogContent>
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
             <DatePicker
@@ -691,8 +703,17 @@ export const TimeTracker: React.FC = () => {
       </Dialog>
 
       {/* 快速新增時間紀錄 Dialog */}
-      <Dialog open={quickAddOpen} onClose={() => setQuickAddOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>新增時間紀錄</DialogTitle>
+      <Dialog open={quickAddOpen} onClose={() => setQuickAddOpen(false)} maxWidth="xs" fullWidth fullScreen={isMobile}>
+        {isMobile ? (
+          <AppBar sx={{ position: 'relative' }}>
+            <Toolbar variant="dense">
+              <IconButton edge="start" color="inherit" onClick={() => setQuickAddOpen(false)} size="small"><Close /></IconButton>
+              <Typography variant="subtitle1" sx={{ ml: 1, flex: 1, fontWeight: 600 }}>新增時間紀錄</Typography>
+            </Toolbar>
+          </AppBar>
+        ) : (
+          <DialogTitle>新增時間紀錄</DialogTitle>
+        )}
         <DialogContent>
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Autocomplete
