@@ -4,9 +4,27 @@
 
 ---
 
-## [Unreleased] — 2026-03-15
+## [Unreleased] — 2026-03-16
 
 ### 新功能 (Features)
+
+- **任務狀態總覽（ENH-008）**
+  - 統計報表頁頂部新增「任務狀態總覽」區塊
+  - 環形圖顯示 6 種狀態（進行中／已暫停／待辦／待評估／已完成／已取消）的任務數量分布
+  - 環形圖中心顯示完成率百分比（已完成 ÷ 有效任務）
+  - 摘要 Chip 列一眼瀏覽各狀態數量
+  - 右側狀態表格顯示數量與佔比
+  - 進行中＋暫停任務的平均完成度 LinearProgress 視覺化
+  - 「含待評估（Backlog）」toggle，預設不計入完成率分母
+  - 任務統計與時間統計共用同一個「篩選任務節點」Autocomplete
+
+- **PWA 離線化（階段 4：可安裝、離線可用）**
+  - 加入 `vite-plugin-pwa@1.2.0`，自動產生 Service Worker（Workbox generateSW 策略）
+  - 所有靜態資源預快取，無網路環境下仍可完整開啟與使用
+  - `manifest.webmanifest`：App 名稱（Task Time Tracker）、主題色 `#1976d2`、standalone 顯示模式
+  - App icon：192×192 與 512×512 PNG（藍底白字 TT），支援 maskable
+  - 手機瀏覽器顯示「加入主畫面」提示，安裝後全螢幕無網址列，體驗與原生 App 相同
+  - `registerType: 'autoUpdate'`：有新版本時自動更新 Service Worker
 
 - **手機底部導航列（階段 1：響應式導航）**
   - 螢幕寬度 < 600px 時自動切換為底部導航列（BottomNavigation）
@@ -15,6 +33,13 @@
   - 「更多」開啟底部 Drawer，收納統計報表、週報生成、封存庫、系統設定、說明
   - 手機端精簡頂部列（僅標題 + Undo + 深色模式切換）
   - Zustand store 新增 `quickAddAction` 供跨頁面觸發表單開啟
+
+- **任務交辦工作流（Task Delegation Workflow）**
+  - 系統設定頁新增「任務交辦工作流」區塊
+  - **交辦匯出**：選取根節點任務 → 遞迴收集整棵子樹 → 匯出 JSON（僅含 tasks + WorkOutput，不含個人 timeslots）
+  - **交辦匯入**：呼叫現有 `mergeImport`，傳入 `timeslots: []` 確保個人時間紀錄完全不受影響；同 ID 任務以較新版本覆蓋，新任務直接加入
+  - 支援完整協作循環：主管交辦 → 同仁執行 → 同仁回報 → 主管收報，各自的時間紀錄完全獨立
+  - 含可展開說明，引導主管端與同仁端操作步驟
 
 - **跨裝置資料同步（階段 2：智慧合併）**
   - Task / Timeslot / WorkOutput 新增 `createdAt` / `updatedAt` 時間戳，所有新增/修改動作自動維護

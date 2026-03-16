@@ -10,7 +10,7 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTaskStore } from '../store/useTaskStore';
 
-const NAV_ROUTES = ['/', '/tasks', '__fab__', '/outputs', '__more__'];
+const NAV_ROUTES = ['/tasks', '/', '__fab__', '/outputs', '__more__'];
 
 const MORE_ITEMS = [
   { label: '統計報表', icon: <PieChart />, path: '/reports' },
@@ -21,8 +21,8 @@ const MORE_ITEMS = [
 ];
 
 function pathToNav(pathname: string): number {
-  if (pathname === '/') return 0;
-  if (pathname === '/tasks') return 1;
+  if (pathname === '/tasks') return 0;
+  if (pathname === '/') return 1;
   if (pathname === '/outputs') return 3;
   // "更多" pages
   if (['/reports', '/weekly', '/archive', '/settings', '/help'].includes(pathname)) return 4;
@@ -76,8 +76,8 @@ export const MobileBottomNav: React.FC = () => {
         elevation={3}
       >
         <BottomNavigation value={navValue} onChange={handleNavChange} showLabels>
-          <BottomNavigationAction label="時間軸" icon={<Dashboard />} />
           <BottomNavigationAction label="任務" icon={<ListAlt />} />
+          <BottomNavigationAction label="時間軸" icon={<Dashboard />} />
           {/* Placeholder for FAB */}
           <BottomNavigationAction
             label=""

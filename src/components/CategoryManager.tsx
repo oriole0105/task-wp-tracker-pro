@@ -5,7 +5,7 @@ import {
   Grid, Card, CardContent, Chip, Checkbox, FormControlLabel, Divider,
   Collapse, Autocomplete,
 } from '@mui/material';
-import { Delete, Edit, Add, Download, Save, Cancel, Backup, Restore, BeachAccess, Tune, Person, MergeType, PhoneAndroid, ExpandMore, ExpandLess, HelpOutline, QrCode, QrCodeScanner } from '@mui/icons-material';
+import { Delete, Edit, Add, Download, Save, Cancel, Backup, Restore, BeachAccess, Tune, Person, MergeType, PhoneAndroid, ExpandMore, ExpandLess, HelpOutline, QrCode, QrCodeScanner, AssignmentReturn } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers';
 import { format } from 'date-fns';
 import { useTaskStore } from '../store/useTaskStore';
@@ -139,6 +139,9 @@ export const CategoryManager: React.FC = () => {
   // 差異匯出：匯出近 N 天新建或修改的 tasks + timeslots
   const [deltaExportDays, setDeltaExportDays] = useState(7);
   const [deltaParentTaskId, setDeltaParentTaskId] = useState<string | null>(null);
+  const [delegationRootTaskId, setDelegationRootTaskId] = useState<string | null>(null);
+  const delegationFileRef = useRef<HTMLInputElement>(null);
+  const [delegationGuideOpen, setDelegationGuideOpen] = useState(false);
 
   // 供父節點選單使用：非封存任務依 WBS 排序
   const { wbsNumbers: deltaWbsNumbers, sorted: deltaSortedTasks } = useMemo(
@@ -190,6 +193,60 @@ export const CategoryManager: React.FC = () => {
     const filename = `task_tracker_delta_${new Date().toISOString().split('T')[0]}.json`;
     if (await shareOrDownload(blob, filename))
       setSuccess(`差異匯出成功：${deltaTasks.length} 筆任務、${deltaTimeslots.length} 筆時段。`);
+  };
+
+  const handleDelegationExport = async () => {
+    if (!delegationRootTaskId) {
+      setError('請先選擇要交辦的根節點任務。');
+      return;
+    }
+    const subtreeIds = new Set<string>();
+    const collect = (id: string) => {
+      subtreeIds.add(id);
+      tasks.filter(t => t.parentId === id).forEach(c => collect(c.id));
+    };
+    collect(delegationRootTaskId);
+    const delegationTasks = tasks.filter(t => subtreeIds.has(t.id));
+    const data = {
+      tasks: delegationTasks,
+      exportedAt: Date.now(),
+      delegationRootTaskId,
+      exportType: 'delegation',
+    };
+    const rootTitle = tasks.find(t => t.id === delegationRootTaskId)?.title ?? 'task';
+    const safeName = rootTitle.replace(/[^\w\u4e00-\u9fff]/g, '_').slice(0, 30);
+    const filename = `task_delegation_${safeName}_${new Date().toISOString().split('T')[0]}.json`;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    if (await shareOrDownload(blob, filename)) {
+      setSuccess(`任務交辦匯出成功：共 ${delegationTasks.length} 筆任務（含子孫）。不含個人時間紀錄。`);
+      setError(null);
+    }
+  };
+
+  const handleDelegationImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const parsed = JSON.parse(e.target?.result as string);
+        if (!Array.isArray(parsed.tasks)) {
+          throw new Error('JSON 檔案中未找到 tasks 陣列，請確認是否為正確的任務交辦檔。');
+        }
+        const taskCount = parsed.tasks.length;
+        if (!window.confirm(
+          `即將匯入 ${taskCount} 筆任務（含工作產出）。\n同 ID 任務以較新版本覆蓋，新任務直接加入。\n個人時間紀錄不受影響。\n\n確定執行嗎？`
+        )) return;
+        const stats = mergeImport({ tasks: parsed.tasks, timeslots: [] });
+        setSuccess(`任務交辦匯入完成：新增 ${stats.tasksAdded} 筆，更新 ${stats.tasksUpdated} 筆。時間紀錄未變動。`);
+        setError(null);
+      } catch (err: any) {
+        setError(`任務交辦匯入失敗: ${err.message}`);
+        setSuccess(null);
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
   };
 
   // 智慧合併匯入
@@ -384,6 +441,77 @@ export const CategoryManager: React.FC = () => {
           <Button variant="outlined" component="label" startIcon={<MergeType />} color="success" sx={{ mt: 0.25 }}>
             合併匯入
             <input type="file" hidden accept=".json" ref={mergeFileRef} onChange={handleMergeImport} />
+          </Button>
+        </Box>
+      </Paper>
+
+      <Paper sx={{ p: 3, mb: 4, border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
+        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <AssignmentReturn color="primary" /> 任務交辦工作流
+        </Typography>
+        <Typography variant="body2" color="textSecondary" paragraph>
+          用於主管交辦任務給同仁，或同仁回報進度給主管。匯出的 JSON 僅含任務結構與工作產出，不包含個人時間紀錄。
+        </Typography>
+
+        <Button
+          size="small"
+          startIcon={<HelpOutline />}
+          endIcon={delegationGuideOpen ? <ExpandLess /> : <ExpandMore />}
+          onClick={() => setDelegationGuideOpen(!delegationGuideOpen)}
+          sx={{ mb: 1, textTransform: 'none' }}
+          color="inherit"
+          variant="text"
+        >
+          如何使用？（點擊展開）
+        </Button>
+        <Collapse in={delegationGuideOpen}>
+          <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, p: 2, mb: 2 }}>
+            <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold' }}>
+              主管端（交辦）：
+            </Typography>
+            <Typography variant="body2" component="ol" sx={{ pl: 2, m: 0 }}>
+              <li>建立任務並填寫需求說明</li>
+              <li>在下方選擇此任務為根節點 → 點擊「交辦匯出」→ 將 JSON 傳給同仁</li>
+            </Typography>
+            <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', mt: 1.5 }}>
+              同仁端（接收＋執行）：
+            </Typography>
+            <Typography variant="body2" component="ol" sx={{ pl: 2, m: 0 }}>
+              <li>收到 JSON → 點擊「交辦匯入」</li>
+              <li>建立子任務、記錄工作產出</li>
+              <li>完成後再次選取根節點 → 點擊「交辦匯出」→ 將 JSON 傳回主管</li>
+            </Typography>
+            <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', mt: 1.5 }}>
+              主管端（收報）：
+            </Typography>
+            <Typography variant="body2" component="ol" sx={{ pl: 2, m: 0 }}>
+              <li>收到 JSON → 點擊「交辦匯入」</li>
+            </Typography>
+          </Box>
+        </Collapse>
+
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <Autocomplete
+            size="small"
+            options={deltaSortedTasks}
+            getOptionLabel={(t) => {
+              const wbs = deltaWbsNumbers.get(t.id);
+              return wbs ? `${wbs} ${t.title}` : t.title;
+            }}
+            value={deltaSortedTasks.find(t => t.id === delegationRootTaskId) ?? null}
+            onChange={(_, val) => setDelegationRootTaskId(val?.id ?? null)}
+            renderInput={(params) => (
+              <TextField {...params} label="根節點任務（必填）" placeholder="選擇要交辦的任務" />
+            )}
+            sx={{ minWidth: 260 }}
+            clearOnEscape
+          />
+          <Button variant="contained" startIcon={<Download />} onClick={handleDelegationExport} color="warning" sx={{ mt: 0.25 }}>
+            交辦匯出
+          </Button>
+          <Button variant="outlined" component="label" startIcon={<MergeType />} color="success" sx={{ mt: 0.25 }}>
+            交辦匯入
+            <input type="file" hidden accept=".json" ref={delegationFileRef} onChange={handleDelegationImport} />
           </Button>
         </Box>
       </Paper>

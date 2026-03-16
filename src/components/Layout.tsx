@@ -44,11 +44,11 @@ export const Layout: React.FC = () => {
             <Button color="inherit" component={RouterLink} to="/tasks" startIcon={<ListAlt />}>
               任務管理
             </Button>
-            <Button color="inherit" component={RouterLink} to="/outputs" startIcon={<AssignmentTurnedIn />}>
-              工作產出
-            </Button>
             <Button color="inherit" component={RouterLink} to="/" startIcon={<Dashboard />}>
               排程視圖
+            </Button>
+            <Button color="inherit" component={RouterLink} to="/outputs" startIcon={<AssignmentTurnedIn />}>
+              工作產出
             </Button>
             <Button color="inherit" component={RouterLink} to="/reports" startIcon={<PieChart />}>
               統計報表
