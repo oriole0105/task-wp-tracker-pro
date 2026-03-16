@@ -635,17 +635,34 @@ const WeeklyReportPage: React.FC = () => {
       renderTaskMilestones(task);
     };
 
+    // Depth-first pre-order 遍歷：父任務 → 父的 milestone → 子任務（遞迴）
+    const ganttActiveIds = new Set(ganttActiveTasks.map(t => t.id));
+    const ganttChildrenMap = new Map<string | undefined, Task[]>();
+    for (const task of ganttActiveTasks) {
+      // 若父任務也在 ganttActiveTasks 內才視為子節點，否則視為根
+      const parentKey = task.parentId && ganttActiveIds.has(task.parentId) ? task.parentId : undefined;
+      const list = ganttChildrenMap.get(parentKey) ?? [];
+      list.push(task);
+      ganttChildrenMap.set(parentKey, list);
+    }
+    const renderSubtree = (parentId: string | undefined, taskList?: Task[]) => {
+      (taskList ?? ganttChildrenMap.get(parentId) ?? []).forEach(task => {
+        renderTask(task);
+        renderSubtree(task.id);
+      });
+    };
+
     if (groupByCategory) {
       const mainCats = Array.from(new Set(ganttActiveTasks.map(t => t.mainCategory || '其他')));
       mainCats.forEach(mainCat => {
-        const catTasks = ganttActiveTasks.filter(t => (t.mainCategory || '其他') === mainCat);
-        if (catTasks.length === 0) return;
+        const catRoots = (ganttChildrenMap.get(undefined) ?? []).filter(t => (t.mainCategory || '其他') === mainCat);
+        if (catRoots.length === 0) return;
         source += `-- ${mainCat} --\n`;
-        catTasks.forEach(renderTask);
+        renderSubtree(undefined, catRoots);
         source += `\n`;
       });
     } else {
-      ganttActiveTasks.forEach(renderTask);
+      renderSubtree(undefined);
       source += `\n`;
     }
 
