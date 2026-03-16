@@ -3,7 +3,7 @@ import {
   Box, Typography, Button, TextField, Paper,
   List, ListItem, ListItemText, IconButton, Alert,
   Grid, Card, CardContent, Chip, Checkbox, FormControlLabel, Divider,
-  Collapse, Autocomplete,
+  Collapse, Autocomplete, Switch, FormGroup,
 } from '@mui/material';
 import { Delete, Edit, Add, Download, Save, Cancel, Backup, Restore, BeachAccess, Tune, Person, MergeType, PhoneAndroid, ExpandMore, ExpandLess, HelpOutline, QrCode, QrCodeScanner, AssignmentReturn } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers';
@@ -15,6 +15,7 @@ import { SettingsQrDialog } from './SettingsQrDialog';
 export const CategoryManager: React.FC = () => {
   const {
     tasks, timeslots, mainCategories, subCategories, outputTypes, holidays, members,
+    preventDuplicateTaskNames, togglePreventDuplicateTaskNames,
     addMainCategory, updateMainCategory, deleteMainCategory,
     addSubCategory, updateSubCategory, deleteSubCategory,
     addOutputType, updateOutputType, deleteOutputType,
@@ -349,6 +350,30 @@ export const CategoryManager: React.FC = () => {
   return (
     <Box sx={{ width: '100%', mx: 'auto' }}>
       <Typography variant="h4" gutterBottom>系統設定</Typography>
+
+      <Paper sx={{ p: 3, mb: 4, border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
+        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Tune color="primary" /> 行為設定
+        </Typography>
+        <FormGroup>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={preventDuplicateTaskNames}
+                onChange={togglePreventDuplicateTaskNames}
+              />
+            }
+            label={
+              <Box>
+                <Typography variant="body2">防止任務同名</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  複製任務時自動加上流水號後綴（-1、-2…），確保任務名稱唯一，避免 PlantUML 同名節點衝突。
+                </Typography>
+              </Box>
+            }
+          />
+        </FormGroup>
+      </Paper>
 
       <Paper sx={{ p: 3, mb: 4, border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
         <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>

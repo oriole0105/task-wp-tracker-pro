@@ -54,7 +54,7 @@ interface IndexedTask extends Task {
 }
 
 export const TaskList: React.FC = () => {
-  const { tasks, timeslots, mainCategories, deleteTask, duplicateTask, archiveTask, archiveAllDone, undo, reorderTask, importTasksFromJson, updateTask, quickAddAction, setQuickAddAction } = useTaskStore();
+  const { tasks, timeslots, mainCategories, deleteTask, duplicateTask, archiveTask, archiveAllDone, undo, reorderTask, importTasksFromJson, updateTask, quickAddAction, setQuickAddAction, preventDuplicateTaskNames } = useTaskStore();
 
   const [filterStatus, setFilterStatus] = useState<TaskStatus[]>(['BACKLOG', 'TODO', 'IN_PROGRESS', 'PAUSED']);
   const [selectedMainCats, setSelectedMainCats] = useState<string[]>([]);
@@ -62,6 +62,10 @@ export const TaskList: React.FC = () => {
   const [dateRange, setDateRange] = useState<[Date | null, Date | null]>([null, null]);
   const [searchQuery, setSearchQuery] = useState('');
   const [settingsMode, setSettingsMode] = useState(false);
+  // 設定模式：inline 標題編輯暫存 { taskId -> draftTitle }
+  const [titleDrafts, setTitleDrafts] = useState<Record<string, string>>({});
+  // 設定模式：標題有重複名稱的 taskId 集合
+  const [titleErrors, setTitleErrors] = useState<Record<string, string>>({});
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
@@ -454,7 +458,51 @@ export const TaskList: React.FC = () => {
               );
 
               // 共用：任務名稱欄
-              const titleCell = (
+              const titleDraft = titleDrafts[task.id] ?? task.title;
+              const titleError = titleErrors[task.id];
+              const handleTitleCommit = (draft: string) => {
+                const trimmed = draft.trim();
+                if (!trimmed) {
+                  // 空白：還原，清除錯誤
+                  setTitleDrafts(p => { const n = { ...p }; delete n[task.id]; return n; });
+                  setTitleErrors(p => { const n = { ...p }; delete n[task.id]; return n; });
+                  return;
+                }
+                if (preventDuplicateTaskNames) {
+                  const conflict = tasks.find(t => t.id !== task.id && t.title === trimmed);
+                  if (conflict) {
+                    setTitleErrors(p => ({ ...p, [task.id]: `「${trimmed}」已被其他任務使用` }));
+                    return; // 不儲存
+                  }
+                }
+                setTitleErrors(p => { const n = { ...p }; delete n[task.id]; return n; });
+                setTitleDrafts(p => { const n = { ...p }; delete n[task.id]; return n; });
+                if (trimmed !== task.title) updateTask(task.id, { title: trimmed });
+              };
+              const titleCell = settingsMode ? (
+                <TableCell sx={{ minWidth: 200 }}>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    value={titleDraft}
+                    error={!!titleError}
+                    helperText={titleError}
+                    onChange={(e) => {
+                      setTitleDrafts(p => ({ ...p, [task.id]: e.target.value }));
+                      if (titleErrors[task.id]) setTitleErrors(p => { const n = { ...p }; delete n[task.id]; return n; });
+                    }}
+                    onBlur={() => handleTitleCommit(titleDraft)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); handleTitleCommit(titleDraft); }
+                      if (e.key === 'Escape') {
+                        setTitleDrafts(p => { const n = { ...p }; delete n[task.id]; return n; });
+                        setTitleErrors(p => { const n = { ...p }; delete n[task.id]; return n; });
+                      }
+                    }}
+                    slotProps={{ htmlInput: { style: { fontWeight: task.depth === 1 ? 'bold' : 'normal', fontSize: '0.875rem' } } }}
+                  />
+                </TableCell>
+              ) : (
                 <TableCell>
                   <Box>
                     <Typography variant="body2" sx={{ fontWeight: task.depth === 1 ? 'bold' : 'normal' }}>{task.title}</Typography>

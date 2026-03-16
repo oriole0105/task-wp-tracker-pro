@@ -22,7 +22,11 @@ const WeeklyReportPage: React.FC = () => {
 
   // --- Report Type & Period Navigation ---
   const [reportType, setReportType] = useState<'weekly' | 'bimonthly' | 'semiannual'>('weekly');
-  const [reportAnchorDate, setReportAnchorDate] = useState<Date>(new Date());
+  // 若今天是週一（剛進入新週），預設顯示上週，方便生成上週週報
+  const [reportAnchorDate, setReportAnchorDate] = useState<Date>(() => {
+    const today = new Date();
+    return today.getDay() === 1 ? subWeeks(today, 1) : today;
+  });
 
   /**
    * ganttPeriod：WBS / 甘特圖 的時間範圍

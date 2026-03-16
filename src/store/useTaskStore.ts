@@ -49,6 +49,7 @@ interface TaskState {
 
   // UI preferences (persisted)
   darkMode: boolean;
+  preventDuplicateTaskNames: boolean;
 
   // Task Actions
   addTask: (task: Omit<Task, 'id'>) => void;
@@ -93,6 +94,7 @@ interface TaskState {
 
   undo: () => void;
   toggleDarkMode: () => void;
+  togglePreventDuplicateTaskNames: () => void;
 
   reorderTask: (id: string, direction: 'up' | 'down' | 'promote' | 'demote') => void;
 
@@ -130,6 +132,7 @@ export const useTaskStore = create<TaskState>()(
       members: [{ id: 'self', name: '', isSelf: true }],
       _history: [],
       darkMode: false,
+      preventDuplicateTaskNames: true,
       quickAddAction: null,
       setQuickAddAction: (action) => set({ quickAddAction: action }),
 
@@ -156,8 +159,21 @@ export const useTaskStore = create<TaskState>()(
       duplicateTask: (sourceTaskId) => {
         const source = get().tasks.find(t => t.id === sourceTaskId);
         if (!source) return;
+        const { tasks: allTasks, preventDuplicateTaskNames } = get();
+        let newTitle: string;
+        if (preventDuplicateTaskNames) {
+          const existingTitles = new Set(allTasks.map(t => t.title));
+          // 剝除既有尾綴 -N，找到基底名稱
+          const baseMatch = source.title.match(/^(.*)-(\d+)$/);
+          const baseName = baseMatch ? baseMatch[1] : source.title;
+          let n = 1;
+          while (existingTitles.has(`${baseName}-${n}`)) n++;
+          newTitle = `${baseName}-${n}`;
+        } else {
+          newTitle = `${source.title}-1`;
+        }
         get().addTask({
-          title: `${source.title}（副本）`,
+          title: newTitle,
           aliasTitle: source.aliasTitle,
           description: source.description,
           mainCategory: source.mainCategory,
@@ -458,6 +474,7 @@ export const useTaskStore = create<TaskState>()(
       },
 
       toggleDarkMode: () => set((state) => ({ darkMode: !state.darkMode })),
+      togglePreventDuplicateTaskNames: () => set((state) => ({ preventDuplicateTaskNames: !state.preventDuplicateTaskNames })),
 
       updateTaskSnapshots: (id, snapshots) => {
         set((state) => ({
@@ -550,6 +567,7 @@ export const useTaskStore = create<TaskState>()(
         holidays: state.holidays,
         members: state.members,
         darkMode: state.darkMode,
+        preventDuplicateTaskNames: state.preventDuplicateTaskNames,
       }),
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
