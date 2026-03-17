@@ -5,7 +5,7 @@ import {
   Grid, Card, CardContent, Chip, Checkbox, FormControlLabel, Divider,
   Collapse, Autocomplete, Switch, FormGroup,
 } from '@mui/material';
-import { Delete, Edit, Add, Download, Save, Cancel, Backup, Restore, BeachAccess, Tune, Person, MergeType, PhoneAndroid, ExpandMore, ExpandLess, HelpOutline, QrCode, QrCodeScanner, AssignmentReturn } from '@mui/icons-material';
+import { Delete, Edit, Add, Download, Save, Cancel, Backup, Restore, BeachAccess, Tune, Person, MergeType, PhoneAndroid, ExpandMore, ExpandLess, HelpOutline, QrCode, QrCodeScanner, AssignmentReturn, TableChart } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers';
 import { format } from 'date-fns';
 import { useTaskStore } from '../store/useTaskStore';
@@ -73,6 +73,44 @@ export const CategoryManager: React.FC = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const filename = `task_tracker_backup_${new Date().toISOString().split('T')[0]}.json`;
     if (await shareOrDownload(blob, filename)) setSuccess('全系統資料匯出成功。');
+  };
+
+  const handleTaskCsvExport = async () => {
+    const activeTasks = tasks.filter(t => !t.archived);
+    const { wbsNumbers, sorted } = computeTaskWbsMap(activeTasks);
+
+    const STATUS_LABELS: Record<string, string> = {
+      BACKLOG: '待評估', TODO: '待辦', IN_PROGRESS: '進行中',
+      PAUSED: '已暫停', DONE: '已完成', CANCELLED: '已取消',
+    };
+    const formatDate = (epoch?: number) => epoch ? format(new Date(epoch), 'yyyy-MM-dd') : '';
+    const escape = (val: string | number | undefined | null) => {
+      const s = String(val ?? '');
+      return (s.includes(',') || s.includes('"') || s.includes('\n'))
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
+    };
+
+    const headers = ['WBS 編號', '任務名稱', '別名', '狀態', '主分類', '完成度(%)', '負責人', '預估開始', '預估結束', '實際開始', '實際結束', '說明'];
+    const rows = sorted.map(task => [
+      wbsNumbers.get(task.id) ?? '',
+      task.title,
+      task.aliasTitle,
+      STATUS_LABELS[task.status] ?? task.status,
+      task.mainCategory,
+      task.completeness != null ? task.completeness : '',
+      task.assignee,
+      formatDate(task.estimatedStartDate),
+      formatDate(task.estimatedEndDate),
+      formatDate(task.actualStartDate),
+      formatDate(task.actualEndDate),
+      task.description,
+    ].map(escape).join(','));
+
+    const csv = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const filename = `tasks_${new Date().toISOString().split('T')[0]}.csv`;
+    if (await shareOrDownload(blob, filename)) setSuccess('任務清單 CSV 匯出成功。');
   };
 
   const handleSettingsExport = async () => {
@@ -382,13 +420,16 @@ export const CategoryManager: React.FC = () => {
         <Typography variant="body2" color="textSecondary" paragraph>
             匯出所有的任務、時間紀錄、分類與工作產出至單一 JSON 檔案。可用於在不同裝置間同步或定期備份。
         </Typography>
-        <Box sx={{ display: 'flex', gap: 2 }}>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <Button variant="contained" startIcon={<Download />} onClick={handleFullExport} color="primary">
             匯出完整資料
           </Button>
           <Button variant="outlined" component="label" startIcon={<Restore />} color="warning">
             還原備份資料
             <input type="file" hidden accept=".json" onChange={handleFullImport} />
+          </Button>
+          <Button variant="outlined" startIcon={<TableChart />} onClick={handleTaskCsvExport} color="success">
+            匯出任務清單 CSV
           </Button>
         </Box>
       </Paper>

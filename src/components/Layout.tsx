@@ -6,7 +6,7 @@ import {
 import { Link as RouterLink, Outlet } from 'react-router-dom';
 import {
   Dashboard, ListAlt, PieChart, Settings, AssignmentTurnedIn, Description,
-  DarkMode, LightMode, Undo, Inventory, HelpOutline,
+  DarkMode, LightMode, Undo, Inventory, HelpOutline, CheckBox, Timeline,
 } from '@mui/icons-material';
 import { useTaskStore } from '../store/useTaskStore';
 import { MobileBottomNav } from './MobileBottomNav';
@@ -47,8 +47,14 @@ export const Layout: React.FC = () => {
             <Button color="inherit" component={RouterLink} to="/" startIcon={<Dashboard />}>
               排程視圖
             </Button>
+            <Button color="inherit" component={RouterLink} to="/todos" startIcon={<CheckBox />}>
+              待辦事項
+            </Button>
             <Button color="inherit" component={RouterLink} to="/outputs" startIcon={<AssignmentTurnedIn />}>
               工作產出
+            </Button>
+            <Button color="inherit" component={RouterLink} to="/task-timeline" startIcon={<Timeline />}>
+              事件軸
             </Button>
             <Button color="inherit" component={RouterLink} to="/reports" startIcon={<PieChart />}>
               統計報表

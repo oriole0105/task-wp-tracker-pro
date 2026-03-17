@@ -5,7 +5,7 @@ import {
 } from '@mui/material';
 import {
   Dashboard, ListAlt, Add, AssignmentTurnedIn, MoreHoriz,
-  PieChart, Description, Inventory, Settings, HelpOutline,
+  PieChart, Description, Inventory, Settings, HelpOutline, CheckBox, Timeline,
 } from '@mui/icons-material';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTaskStore } from '../store/useTaskStore';
@@ -13,6 +13,8 @@ import { useTaskStore } from '../store/useTaskStore';
 const NAV_ROUTES = ['/tasks', '/', '__fab__', '/outputs', '__more__'];
 
 const MORE_ITEMS = [
+  { label: '待辦事項', icon: <CheckBox />, path: '/todos' },
+  { label: '事件時間軸', icon: <Timeline />, path: '/task-timeline' },
   { label: '統計報表', icon: <PieChart />, path: '/reports' },
   { label: '週報生成', icon: <Description />, path: '/weekly' },
   { label: '封存庫', icon: <Inventory />, path: '/archive' },
@@ -25,7 +27,7 @@ function pathToNav(pathname: string): number {
   if (pathname === '/') return 1;
   if (pathname === '/outputs') return 3;
   // "更多" pages
-  if (['/reports', '/weekly', '/archive', '/settings', '/help'].includes(pathname)) return 4;
+  if (['/todos', '/task-timeline', '/reports', '/weekly', '/archive', '/settings', '/help'].includes(pathname)) return 4;
   return 0;
 }
 

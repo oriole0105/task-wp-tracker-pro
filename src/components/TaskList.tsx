@@ -7,7 +7,7 @@ import {
   Snackbar, Alert, Tooltip,
 } from '@mui/material';
 import {
-  Edit, Delete, Add, SubdirectoryArrowRight, ContentCopy, FileUpload, AccountTree,
+  Edit, Delete, Add, SubdirectoryArrowRight, ContentCopy, CopyAll, FileUpload, AccountTree,
   FilterListOff, SelectAll, EventAvailable, EventBusy,
   KeyboardArrowDown, KeyboardArrowRight, KeyboardArrowLeft, UnfoldLess, UnfoldMore, EventNote,
   Search, WarningAmber, Archive, Inventory, ArrowUpward, ArrowDownward, Tune,
@@ -54,7 +54,7 @@ interface IndexedTask extends Task {
 }
 
 export const TaskList: React.FC = () => {
-  const { tasks, timeslots, mainCategories, deleteTask, duplicateTask, archiveTask, archiveAllDone, undo, reorderTask, importTasksFromJson, updateTask, quickAddAction, setQuickAddAction, preventDuplicateTaskNames } = useTaskStore();
+  const { tasks, timeslots, mainCategories, deleteTask, duplicateTask, duplicateSubtree, archiveTask, archiveAllDone, undo, reorderTask, importTasksFromJson, updateTask, quickAddAction, setQuickAddAction, preventDuplicateTaskNames } = useTaskStore();
 
   const [filterStatus, setFilterStatus] = useState<TaskStatus[]>(['BACKLOG', 'TODO', 'IN_PROGRESS', 'PAUSED']);
   const [selectedMainCats, setSelectedMainCats] = useState<string[]>([]);
@@ -99,6 +99,26 @@ export const TaskList: React.FC = () => {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importJsonTasks, setImportJsonTasks] = useState<JsonImportTask[]>([]);
   const [importParentId, setImportParentId] = useState<string>('');
+
+  // 子樹複製 Dialog 狀態
+  const [subtreeCopyTaskId, setSubtreeCopyTaskId] = useState<string | null>(null);
+  const [subtreePrefix, setSubtreePrefix] = useState('');
+  const [subtreePostfix, setSubtreePostfix] = useState('');
+  const [subtreeSearch, setSubtreeSearch] = useState('');
+  const [subtreeReplace, setSubtreeReplace] = useState('');
+
+  // 取得某任務的整棵子樹（含自身），回傳 [{ task, depth }]
+  const getSubtreePreview = useMemo(() => (rootId: string) => {
+    const result: { task: Task; depth: number }[] = [];
+    const collect = (taskId: string, depth: number) => {
+      const task = tasks.find(t => t.id === taskId && !t.archived);
+      if (!task) return;
+      result.push({ task, depth });
+      tasks.filter(t => t.parentId === taskId && !t.archived).forEach(c => collect(c.id, depth + 1));
+    };
+    collect(rootId, 0);
+    return result;
+  }, [tasks]);
 
   // 預先計算每個任務的累計工時
   const taskTotalTimeMap = useMemo(() => {
@@ -714,6 +734,13 @@ export const TaskList: React.FC = () => {
                     <Tooltip title="複製任務">
                       <IconButton size="small" onClick={() => duplicateTask(task.id)}><ContentCopy fontSize="small" /></IconButton>
                     </Tooltip>
+                    {task.hasChildren && (
+                      <Tooltip title="複製整棵子樹（含所有子任務）">
+                        <IconButton size="small" onClick={() => { setSubtreeCopyTaskId(task.id); setSubtreePrefix(''); setSubtreePostfix(''); setSubtreeSearch(''); setSubtreeReplace(''); }}>
+                          <CopyAll fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                     {task.depth < 5 ? (
                       <IconButton size="small" onClick={() => { setEditingTask(undefined); setParentTaskId(task.id); setIsFormOpen(true); }} title="建立子任務"><SubdirectoryArrowRight fontSize="small" /></IconButton>
                     ) : <IconButton size="small" disabled><SubdirectoryArrowRight fontSize="small" sx={{ opacity: 0.1 }} /></IconButton>}
@@ -734,6 +761,119 @@ export const TaskList: React.FC = () => {
       </TableContainer>
 
       <TaskForm open={isFormOpen} onClose={() => setIsFormOpen(false)} initialData={editingTask} parentId={parentTaskId} />
+
+      {/* 子樹複製 Dialog */}
+      {subtreeCopyTaskId && (() => {
+        const preview = getSubtreePreview(subtreeCopyTaskId);
+        // 套用所有改名規則：先取代，再加前後綴
+        const transformTitle = (original: string) => {
+          const mid = subtreeSearch ? original.replaceAll(subtreeSearch, subtreeReplace) : original;
+          return `${subtreePrefix}${mid}${subtreePostfix}`;
+        };
+        return (
+          <Dialog open onClose={() => setSubtreeCopyTaskId(null)} maxWidth="sm" fullWidth>
+            <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CopyAll fontSize="small" /> 複製整棵子樹
+            </DialogTitle>
+            <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+              <DialogContentText>
+                將複製 <strong>{preview.length}</strong> 個任務（含自身與所有子任務），新任務狀態重置為 BACKLOG。
+              </DialogContentText>
+
+              {/* 前綴 / 後綴 */}
+              <Box sx={{ display: 'flex', gap: 1.5 }}>
+                <TextField
+                  label="前綴 (Prefix)"
+                  size="small"
+                  fullWidth
+                  value={subtreePrefix}
+                  onChange={(e) => setSubtreePrefix(e.target.value)}
+                  placeholder="例如：IP-B "
+                />
+                <TextField
+                  label="後綴 (Postfix)"
+                  size="small"
+                  fullWidth
+                  value={subtreePostfix}
+                  onChange={(e) => setSubtreePostfix(e.target.value)}
+                  placeholder="例如： v2"
+                />
+              </Box>
+
+              {/* 字串取代 */}
+              <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+                <TextField
+                  label="搜尋字串"
+                  size="small"
+                  fullWidth
+                  value={subtreeSearch}
+                  onChange={(e) => setSubtreeSearch(e.target.value)}
+                  placeholder="例如：IP-A"
+                />
+                <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>→</Typography>
+                <TextField
+                  label="取代為"
+                  size="small"
+                  fullWidth
+                  value={subtreeReplace}
+                  onChange={(e) => setSubtreeReplace(e.target.value)}
+                  placeholder="例如：IP-B"
+                  disabled={!subtreeSearch}
+                />
+              </Box>
+
+              {/* 預覽 */}
+              <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, p: 1.5, maxHeight: 240, overflowY: 'auto' }}>
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+                  新任務名稱預覽：
+                </Typography>
+                {preview.map(({ task, depth }) => {
+                  const newTitle = transformTitle(task.title);
+                  const changed = newTitle !== task.title;
+                  return (
+                    <Box key={task.id} sx={{ display: 'flex', alignItems: 'baseline', pl: depth * 2 }}>
+                      <Typography variant="caption" color="text.disabled" sx={{ mr: 0.5, fontFamily: 'monospace' }}>{'└ '}</Typography>
+                      <Typography variant="body2" sx={{ wordBreak: 'break-all', color: changed ? 'text.primary' : 'text.disabled' }}>
+                        {subtreePrefix && <Box component="span" sx={{ color: 'primary.main', fontWeight: 'bold' }}>{subtreePrefix}</Box>}
+                        {subtreeSearch
+                          ? task.title.split(subtreeSearch).map((seg, i, arr) => (
+                              <React.Fragment key={i}>
+                                {seg}
+                                {i < arr.length - 1 && (
+                                  <Box component="span" sx={{ color: 'warning.main', fontWeight: 'bold', textDecoration: 'line-through', mx: 0.25 }}>{subtreeSearch}</Box>
+                                )}
+                                {i < arr.length - 1 && (
+                                  <Box component="span" sx={{ color: 'success.main', fontWeight: 'bold' }}>{subtreeReplace}</Box>
+                                )}
+                              </React.Fragment>
+                            ))
+                          : task.title
+                        }
+                        {subtreePostfix && <Box component="span" sx={{ color: 'secondary.main', fontWeight: 'bold' }}>{subtreePostfix}</Box>}
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setSubtreeCopyTaskId(null)}>取消</Button>
+              <Button
+                variant="contained"
+                startIcon={<CopyAll />}
+                onClick={() => {
+                  duplicateSubtree(subtreeCopyTaskId, subtreePrefix, subtreePostfix, subtreeSearch || undefined, subtreeReplace);
+                  setSubtreeCopyTaskId(null);
+                  setSnackbarMsg(`已複製子樹，共 ${preview.length} 個任務`);
+                  setSnackbarOpen(true);
+                }}
+              >
+                確認複製
+              </Button>
+            </DialogActions>
+          </Dialog>
+        );
+      })()}
 
       {/* JSON 匯入 Dialog */}
       <Dialog open={importDialogOpen} onClose={() => setImportDialogOpen(false)} maxWidth="sm" fullWidth>

@@ -8,7 +8,9 @@ import Dashboard from './pages/Dashboard';
 import TasksPage from './pages/TasksPage';
 import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
+import TodoPage from './pages/TodoPage';
 import OutputReportPage from './pages/OutputReportPage';
+import TaskTimelinePage from './pages/TaskTimelinePage';
 import WeeklyReportPage from './pages/WeeklyReportPage';
 import ArchivePage from './pages/ArchivePage';
 import HelpPage from './pages/HelpPage';
@@ -36,7 +38,9 @@ function App() {
             <Route path="/" element={<Layout />}>
               <Route index element={<Dashboard />} />
               <Route path="tasks" element={<TasksPage />} />
+              <Route path="todos" element={<TodoPage />} />
               <Route path="outputs" element={<OutputReportPage />} />
+              <Route path="task-timeline" element={<TaskTimelinePage />} />
               <Route path="reports" element={<ReportsPage />} />
               <Route path="weekly" element={<WeeklyReportPage />} />
               <Route path="settings" element={<SettingsPage />} />

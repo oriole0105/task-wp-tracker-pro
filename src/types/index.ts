@@ -93,6 +93,7 @@ export interface Task {
   showInReport?: boolean; // 顯示於週報進度表，預設 true；固定會議等可設為 false
   trackCompleteness?: boolean; // 預設 true；週期型/持續型任務設 false，不追蹤完成度 %
   milestones?: Milestone[];
+  timelineEntries?: TaskTimelineEntry[];
   archived?: boolean;
   archivedAt?: number;
   createdAt?: number;   // epoch ms，用於跨裝置智慧合併
@@ -114,6 +115,22 @@ export interface JsonImportTask {
   ganttDisplayMode?: GanttDisplayMode;
   status?: TaskStatus;
   children?: JsonImportTask[];
+}
+
+export interface TodoItem {
+  id: string;
+  description: string;
+  done: boolean;
+  startDate: string;   // 'yyyy-MM-dd'
+  doneDate?: string;    // 'yyyy-MM-dd'
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface TaskTimelineEntry {
+  id: string;
+  date: string;        // 'yyyy-MM-dd'
+  content: string;
 }
 
 export interface CategoryData {

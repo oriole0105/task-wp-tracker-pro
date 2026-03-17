@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import { format, startOfWeek } from 'date-fns';
-import type { Task, CategoryData, WorkOutput, Timeslot, OutputType, WeeklySnapshot, Member, GanttDisplayMode, JsonImportTask } from '../types';
+import type { Task, CategoryData, WorkOutput, Timeslot, OutputType, WeeklySnapshot, Member, GanttDisplayMode, JsonImportTask, TodoItem } from '../types';
 import { getAllDescendantIds, propagateStatusToAncestors, type StatusChangeInfo } from '../utils/taskHierarchy';
 
 const getCurrentWeekStart = (): string =>
@@ -38,6 +38,7 @@ type SettingsExport = {
 interface TaskState {
   tasks: Task[];
   timeslots: Timeslot[];
+  todos: TodoItem[];
   mainCategories: string[];
   subCategories: string[];
   outputTypes: OutputType[];
@@ -56,6 +57,7 @@ interface TaskState {
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
   duplicateTask: (sourceTaskId: string) => void;
+  duplicateSubtree: (sourceTaskId: string, prefix: string, postfix: string, search?: string, replace?: string) => void;
   importTasksFromJson: (jsonTasks: JsonImportTask[], parentId?: string) => void;
 
   // Timeslot Actions
@@ -115,6 +117,15 @@ interface TaskState {
   // 智慧合併匯入（手機 → 電腦）
   mergeImport: (data: { tasks?: Task[], timeslots?: Timeslot[] }) => { tasksAdded: number; tasksUpdated: number; timeslotsAdded: number; timeslotsUpdated: number };
 
+  // Todo Actions
+  addTodo: (description: string) => void;
+  toggleTodo: (id: string) => void;
+  updateTodo: (id: string, updates: Partial<Pick<TodoItem, 'description' | 'startDate' | 'doneDate'>>) => void;
+  deleteTodo: (id: string) => void;
+  clearDoneTodos: () => void;
+  // 匯入待辦事項（智慧合併：依 id 去重，已存在則跳過）
+  importTodos: (incoming: TodoItem[]) => { added: number; skipped: number };
+
   // 手機快速新增（不 persist）
   quickAddAction: 'task' | 'timeslot' | null;
   setQuickAddAction: (action: 'task' | 'timeslot' | null) => void;
@@ -125,6 +136,7 @@ export const useTaskStore = create<TaskState>()(
     (set, get) => ({
       tasks: [],
       timeslots: [],
+      todos: [],
       mainCategories: ['Development', 'Meeting', 'General'],
       subCategories: ['固定會議', '臨時會議', '議題討論', '思考規劃', '閱讀學習', '文件撰寫', '程式開發', '程式碼審查', 'Debug/問題排查'],
       outputTypes: DEFAULT_OUTPUT_TYPES,
@@ -189,6 +201,45 @@ export const useTaskStore = create<TaskState>()(
           outputs: [],
           milestones: [],
         });
+      },
+
+      duplicateSubtree: (sourceTaskId, prefix, postfix, search, replace) => {
+        const allTasks = get().tasks;
+        const source = allTasks.find(t => t.id === sourceTaskId);
+        if (!source) return;
+        const now = Date.now();
+        const newTasks: Task[] = [];
+        const transformTitle = (original: string) => {
+          const mid = search ? original.replaceAll(search, replace ?? '') : original;
+          return `${prefix}${mid}${postfix}`;
+        };
+        const cloneNode = (taskId: string, newParentId?: string) => {
+          const task = allTasks.find(t => t.id === taskId);
+          if (!task) return;
+          const newId = uuidv4();
+          newTasks.push({
+            ...task,
+            id: newId,
+            title: transformTitle(task.title),
+            parentId: newParentId,
+            status: 'BACKLOG',
+            outputs: [],
+            milestones: [],
+            weeklySnapshots: [],
+            actualStartDate: undefined,
+            actualEndDate: undefined,
+            createdAt: now,
+            updatedAt: now,
+          });
+          allTasks
+            .filter(t => t.parentId === taskId && !t.archived)
+            .forEach(child => cloneNode(child.id, newId));
+        };
+        cloneNode(sourceTaskId, source.parentId);
+        set((state) => ({
+          _history: [...state._history.slice(-19), { tasks: state.tasks, timeslots: state.timeslots }],
+          tasks: [...state.tasks, ...newTasks],
+        }));
       },
 
       importTasksFromJson: (jsonTasks, parentId) => {
@@ -548,6 +599,62 @@ export const useTaskStore = create<TaskState>()(
         return stats;
       },
 
+      // --- Todo Actions ---
+      addTodo: (description) => {
+        const now = Date.now();
+        const newTodo: TodoItem = {
+          id: uuidv4(),
+          description,
+          done: false,
+          startDate: format(new Date(), 'yyyy-MM-dd'),
+          createdAt: now,
+          updatedAt: now,
+        };
+        set((state) => ({ todos: [...state.todos, newTodo] }));
+      },
+
+      toggleTodo: (id) => {
+        const now = Date.now();
+        set((state) => ({
+          todos: state.todos.map((t) =>
+            t.id === id
+              ? {
+                  ...t,
+                  done: !t.done,
+                  doneDate: !t.done ? format(new Date(), 'yyyy-MM-dd') : undefined,
+                  updatedAt: now,
+                }
+              : t
+          ),
+        }));
+      },
+
+      updateTodo: (id, updates) => {
+        const now = Date.now();
+        set((state) => ({
+          todos: state.todos.map((t) =>
+            t.id === id ? { ...t, ...updates, updatedAt: now } : t
+          ),
+        }));
+      },
+
+      deleteTodo: (id) => {
+        set((state) => ({ todos: state.todos.filter((t) => t.id !== id) }));
+      },
+
+      clearDoneTodos: () => {
+        set((state) => ({ todos: state.todos.filter((t) => !t.done) }));
+      },
+
+      importTodos: (incoming) => {
+        const existingIds = new Set(get().todos.map((t) => t.id));
+        const toAdd = incoming.filter((t) => !existingIds.has(t.id));
+        if (toAdd.length > 0) {
+          set((state) => ({ todos: [...state.todos, ...toAdd] }));
+        }
+        return { added: toAdd.length, skipped: incoming.length - toAdd.length };
+      },
+
       _lastAutoStatusChange: null,
       clearLastAutoStatusChange: () => set({ _lastAutoStatusChange: null }),
 
@@ -561,6 +668,7 @@ export const useTaskStore = create<TaskState>()(
       partialize: (state) => ({
         tasks: state.tasks,
         timeslots: state.timeslots,
+        todos: state.todos,
         mainCategories: state.mainCategories,
         subCategories: state.subCategories,
         outputTypes: state.outputTypes,

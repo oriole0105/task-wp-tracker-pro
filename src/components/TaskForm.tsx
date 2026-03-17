@@ -12,7 +12,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { format, startOfWeek, addDays, parseISO } from 'date-fns';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { v4 as uuidv4 } from 'uuid';
-import type { Task, TaskStatus, WorkOutput, WeeklySnapshot, Milestone } from '../types';
+import type { Task, TaskStatus, WorkOutput, WeeklySnapshot, Milestone, TaskTimelineEntry } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { getTaskActualStart, getTaskActualEnd } from '../utils/taskDateUtils';
 import { computeTaskWbsMap } from '../utils/wbs';
@@ -66,6 +66,12 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
   const [trackCompleteness, setTrackCompleteness] = useState(true);
   const [completenessType, setCompletenessType] = useState<'real' | 'confidence'>('confidence');
   const [currentParentId, setCurrentParentId] = useState<string>('');
+
+  // --- Timeline entries state ---
+  const [timelineEntries, setTimelineEntries] = useState<TaskTimelineEntry[]>([]);
+  const [newTimelineDate, setNewTimelineDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [newTimelineContent, setNewTimelineContent] = useState('');
+  const [showTimeline, setShowTimeline] = useState(false);
 
   // --- Snapshot management state ---
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -153,9 +159,11 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setShowInReport(initialData.showInReport !== false);
       setOutputs(initialData.outputs || []);
       setMilestones(initialData.milestones ?? []);
+      setTimelineEntries(initialData.timelineEntries ?? []);
       setLabels(initialData.labels || []);
       setCurrentParentId(initialData.parentId || '');
       setShowAdvanced(!!(initialData.aliasTitle || initialData.description || initialData.assignee || initialData.reporter || (initialData.labels && initialData.labels.length > 0)));
+      setShowTimeline((initialData.timelineEntries ?? []).length > 0);
     } else if (parentId) {
       const parent = getTaskById(parentId);
       if (parent) {
@@ -176,6 +184,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setShowInReport(true);
       setOutputs([]);
       setMilestones([]);
+      setTimelineEntries([]);
       setLabels([]);
       setCurrentParentId(parentId);
       setShowAdvanced(false);
@@ -199,6 +208,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setShowInReport(true);
       setOutputs([]);
       setMilestones([]);
+      setTimelineEntries([]);
       setLabels([]);
       setCurrentParentId('');
     }
@@ -211,6 +221,9 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
     setNewSnapValue('');
     setExpandedOutputSnaps(new Set());
     setNewOutputSnap({});
+    // Reset timeline UI state
+    setNewTimelineDate(format(new Date(), 'yyyy-MM-dd'));
+    setNewTimelineContent('');
   }, [initialData, parentId, open, getTaskById, members]);
 
   // 實際開始日/完成日：從 timeslots 動態計算（含所有後代任務），不儲存於 Task
@@ -362,6 +375,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       completenessType,
       outputs,
       milestones,
+      timelineEntries,
       labels,
       parentId: currentParentId || undefined,
     };
@@ -889,6 +903,100 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
                 <Typography variant="body2" color="text.disabled" sx={{ pl: 1 }}>尚無里程碑</Typography>
               )}
             </Box>
+          </Grid>
+
+          {/* ── Timeline Entries Section ── */}
+          <Grid size={{ xs: 12 }}>
+            <Divider sx={{ my: 2 }} />
+            <Box
+              onClick={() => setShowTimeline(v => !v)}
+              sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 0.5, py: 0.5, userSelect: 'none' }}
+            >
+              {showTimeline ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+              <Typography variant="h6">
+                事件時間軸（{timelineEntries.length} 筆）
+              </Typography>
+            </Box>
+            <Collapse in={showTimeline}>
+              <Box sx={{ mt: 1 }}>
+                {/* Add new entry */}
+                <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5, bgcolor: 'action.hover' }}>
+                  <Grid container spacing={1} alignItems="flex-start">
+                    <Grid size={{ xs: 12, sm: 4 }}>
+                      <TextField
+                        size="small"
+                        label="日期"
+                        type="date"
+                        fullWidth
+                        value={newTimelineDate}
+                        onChange={(e) => setNewTimelineDate(e.target.value)}
+                        slotProps={{ inputLabel: { shrink: true } }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        size="small"
+                        label="事件描述"
+                        fullWidth
+                        value={newTimelineContent}
+                        onChange={(e) => setNewTimelineContent(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            if (newTimelineContent.trim() && newTimelineDate) {
+                              setTimelineEntries(prev => [...prev, {
+                                id: uuidv4(),
+                                date: newTimelineDate,
+                                content: newTimelineContent.trim(),
+                              }]);
+                              setNewTimelineContent('');
+                            }
+                          }
+                        }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 2 }} sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<Add />}
+                        disabled={!newTimelineContent.trim() || !newTimelineDate}
+                        onClick={() => {
+                          setTimelineEntries(prev => [...prev, {
+                            id: uuidv4(),
+                            date: newTimelineDate,
+                            content: newTimelineContent.trim(),
+                          }]);
+                          setNewTimelineContent('');
+                        }}
+                      >
+                        新增
+                      </Button>
+                    </Grid>
+                  </Grid>
+                </Paper>
+
+                {/* Existing entries sorted by date desc */}
+                {[...timelineEntries]
+                  .sort((a, b) => b.date.localeCompare(a.date))
+                  .map((entry) => (
+                    <Paper key={entry.id} variant="outlined" sx={{ p: 1, mb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Chip label={entry.date} size="small" variant="outlined" sx={{ fontFamily: 'monospace', flexShrink: 0 }} />
+                      <Typography variant="body2" sx={{ flex: 1 }}>{entry.content}</Typography>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => setTimelineEntries(prev => prev.filter(e => e.id !== entry.id))}
+                      >
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    </Paper>
+                  ))}
+                {timelineEntries.length === 0 && (
+                  <Typography variant="body2" color="text.disabled" sx={{ pl: 1 }}>尚無事件記錄</Typography>
+                )}
+              </Box>
+            </Collapse>
           </Grid>
 
           <Grid size={{ xs: 12 }}>
