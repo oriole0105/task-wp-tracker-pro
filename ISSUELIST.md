@@ -141,10 +141,10 @@
 ---
 
 ### TECH-001 — chunk 過大警告
-- **狀態**：📋 待處理
+- **狀態**：✅ 已解決（2026-03-18）
 - **優先度**：低
-- **描述**：`npm run build` 顯示 `index.js` 超過 500 KB（目前約 1,220 KB）。雖不影響功能，但可透過 code-splitting 改善載入效能。
-- **影響範圍**：`vite.config.ts` — 加入 `build.rollupOptions.output.manualChunks` 分割 MUI / Recharts / plantuml-encoder 等大型依賴
+- **描述**：`vite.config.ts` 加入 `manualChunks`，將單一 1,789 KB chunk 拆為 10 個（最大 367 KB），消除 build 警告並改善瀏覽器快取效益。
+- **分割策略**：vendor-react / vendor-mui / vendor-mui-icons / vendor-mui-pickers / vendor-charts / vendor-plantuml / vendor-markdown / vendor-misc
 
 ---
 
@@ -250,5 +250,5 @@
 | ✅ 已解決功能 | 11 |
 | 📋 待處理功能 | 0 |
 | 💡 建議功能 | 0 |
-| 📋 技術債 | 1 |
+| 📋 技術債 | 0 |
 | **合計** | **18** |
