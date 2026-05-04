@@ -1,0 +1,18 @@
+{
+  "name": "@tt/shared",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "exports": {
+    "./types": "./src/types/index.ts",
+    "./utils/*": "./src/utils/*.ts",
+    "./schema": "./src/schema/validators.ts",
+    "./reports/common": "./src/reports/common.ts",
+    "./reports/plantuml": "./src/reports/plantuml.ts",
+    "./reports/weekly": "./src/reports/weekly.ts"
+  },
+  "dependencies": {
+    "date-fns": "^4.1.0",
+    "zod": "^3.25.0"
+  }
+}

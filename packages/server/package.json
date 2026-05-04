@@ -1,0 +1,27 @@
+{
+  "name": "@tt/server",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --noEmit",
+    "start": "node dist/index.js",
+    "tt": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@tt/shared": "*",
+    "@hono/node-server": "^1.14.2",
+    "@hono/zod-validator": "^0.4.3",
+    "date-fns": "^4.1.0",
+    "hono": "^4.7.10",
+    "proper-lockfile": "^4.1.2",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/proper-lockfile": "^4.1.4",
+    "tsx": "^4.19.3",
+    "typescript": "~5.9.3"
+  }
+}

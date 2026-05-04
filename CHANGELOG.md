@@ -4,6 +4,67 @@
 
 ---
 
+## [2.0.0] — 2026-05-02
+
+### 架構重構 (Architecture)
+
+- **SPA + localStorage → Monorepo + 本機 Hono Server + REST API + MCP**
+  - 重整為 npm workspaces monorepo，四個子套件：`packages/web`、`packages/server`、`packages/mcp`、`packages/shared`
+  - 資料儲存從 `localStorage` 改為本機 JSON 檔（`~/.task-time-tracker/data.json`）
+  - Web UI 從直接讀寫 Zustand/localStorage 改為透過 REST API 讀寫
+  - `npm run dev` 以 `concurrently` 同時啟動 web（port 5173）與 API server（port 5174）
+
+- **packages/server — Hono REST API server**
+  - 框架：Hono + `@hono/node-server`
+  - Bearer token 認證（token 存於 `~/.task-time-tracker/token`，600 權限）
+  - REST endpoints：
+    - `GET/POST/PATCH/DELETE /api/v1/tasks` — 任務 CRUD
+    - `GET /api/v1/tasks/wbs-map` — 附帶 WBS 編號的排序任務清單
+    - `GET /api/v1/tasks/:id/subtasks` — 子任務
+    - `GET /api/v1/tasks/:id/total-time` — 含子孫任務的總工時
+    - `PATCH /api/v1/tasks/:id/snapshots` — 週快照 upsert
+    - `POST /api/v1/tasks/:id/archive` / `unarchive` / `archive-all-done`
+    - `GET/POST/PATCH/DELETE /api/v1/timeslots`
+    - `GET/POST/PATCH/DELETE /api/v1/todos`
+    - `/api/v1/settings`、`/api/v1/categories/*`、`/api/v1/output-types`、`/api/v1/members`、`/api/v1/holidays`
+    - `POST/GET /api/v1/data/import`、`/data/export`、`/data/merge`
+    - `GET /api/v1/reports/weekly`、`/reports/bi-monthly`、`/reports/half-year`、`/reports/calendar.ics`
+    - `/system/health`、`/system/handshake`（SSE token 協商）、`/system/events`（SSE 推播）、`/system/import-localstorage`（首次遷移）
+  - 原子寫入（tmp → rename）防止寫入中斷損毀資料
+  - schemaVersion 管理（目前 v3），升版時自動備份舊檔
+  - 定期自動備份：啟動時 + 每 24 小時，保留最近 7 份（存於 `~/.task-time-tracker/backups/`）
+
+- **packages/mcp — MCP server（Claude Desktop / Claude Code 整合）**
+  - 基於 `@modelcontextprotocol/sdk`，以 stdio 傳輸連線
+  - 任務工具：`task_list`、`task_find_by_wbs`、`task_get`、`task_get_subtasks`、`task_get_total_time`、`task_create`、`task_update`、`task_delete`、`task_archive`、`task_unarchive`、`task_archive_all_done`、`task_update_snapshot`
+  - 時間紀錄工具：`timeslot_list`、`timeslot_create`、`timeslot_update`、`timeslot_delete`
+  - 待辦工具：`todo_list`、`todo_create`、`todo_update`、`todo_delete`
+  - 報告工具：`report_weekly`（adoc/json）、`report_bi_monthly`、`report_half_year`（支援 ganttScale 選項）、`report_calendar_ics`
+  - 資料/設定工具：`data_export`、`data_summary`、`settings_get`、`settings_update`、`category_add`、`output_type_list`、`members_list`、`holidays_list`、`holidays_add`
+
+- **packages/shared — 共用型別與工具**
+  - 所有 domain types（`Task`、`Timeslot`、`TodoItem` 等）搬至 `@tt/shared/types`
+  - WBS 計算工具（`computeTaskWbsMap`）搬至 `@tt/shared/utils/wbs`
+  - 報告生成邏輯搬至 `@tt/shared/reports`（`common`、`weekly`、`plantuml`）
+  - Server 與 web 共用同一套型別，消除重複定義
+
+- **packages/web — 前端改動**
+  - Zustand store 改為從 server API 初始化（`useApiHydration` hook），不再直接讀 localStorage
+  - `useSseSync` hook：透過 SSE 監聽 server 推播事件，有變更時自動重新拉取資料，支援重連（5 秒間隔）
+  - `OfflineBanner`：server 未啟動時顯示橘色橫幅「伺服器離線，目前為唯讀模式」
+  - `MigrationWizard`：偵測到 `bootstrapRequired` 時彈出，引導使用者選擇「遷移舊資料（localStorage）」或「從頭開始」
+  - `vite.config.ts` 新增 proxy：`/api` 與 `/system` 請求轉發至 port 5174
+  - `apiClient` 服務：封裝 fetch，自動帶入 Bearer token 與 CSRF-safe headers
+
+- **CLI 工具 (`tt`)**
+  - `npm -w packages/server run tt -- export [dest.json]` — 匯出完整資料
+  - `npm -w packages/server run tt -- import <src.json>` — 匯入資料（server 在線時熱更新，離線時直接寫檔）
+  - `npm -w packages/server run tt -- backup [label]` — 立即備份
+  - `npm -w packages/server run tt -- status` — 顯示資料摘要與 server 狀態
+  - `import` 支援三種格式：StoredFile（`{ data }`）、Zustand localStorage（`{ state }`）、裸 AppData
+
+---
+
 ## [1.0.0] — 2026-03-18
 
 ### 正式發布
