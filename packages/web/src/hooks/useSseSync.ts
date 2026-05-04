@@ -21,6 +21,7 @@ export function useSseSync(doHydrate: () => Promise<void>) {
     let es: EventSource | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let active = true;
+    let delay = 5000;
 
     const onEvent = () => {
       if (timer) clearTimeout(timer);
@@ -33,12 +34,19 @@ export function useSseSync(doHydrate: () => Promise<void>) {
         const url = await api.sseUrl();
         es = new EventSource(url);
         SSE_EVENT_TYPES.forEach(t => es!.addEventListener(t, onEvent));
+        es.onopen = () => { delay = 5000; };
         es.onerror = () => {
           es?.close();
-          if (active) setTimeout(connect, 5000);
+          if (active) {
+            setTimeout(connect, delay);
+            delay = Math.min(delay * 2, 60_000);
+          }
         };
       } catch {
-        if (active) setTimeout(connect, 5000);
+        if (active) {
+          setTimeout(connect, delay);
+          delay = Math.min(delay * 2, 60_000);
+        }
       }
     };
 

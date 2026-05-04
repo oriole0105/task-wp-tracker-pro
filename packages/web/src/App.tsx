@@ -4,6 +4,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { createTheme, ThemeProvider, CssBaseline } from '@mui/material';
 import { Layout } from './components/Layout';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
 import Dashboard from './pages/Dashboard';
 import TasksPage from './pages/TasksPage';
 import ReportsPage from './pages/ReportsPage';
@@ -30,6 +31,7 @@ function App() {
   );
 
   return (
+    <AppErrorBoundary>
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <LocalizationProvider dateAdapter={AdapterDateFns}>
@@ -51,6 +53,7 @@ function App() {
         </BrowserRouter>
       </LocalizationProvider>
     </ThemeProvider>
+    </AppErrorBoundary>
   );
 }
 

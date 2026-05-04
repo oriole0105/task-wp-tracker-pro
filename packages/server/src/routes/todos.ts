@@ -8,6 +8,7 @@ import type { TodoItem } from '@tt/shared/types';
 
 const app = new Hono();
 const ok = <T>(d: T) => ({ ok: true as const, data: d });
+const notFound = () => ({ ok: false as const, error: { code: 'NOT_FOUND', message: 'Todo not found' } });
 
 app.get('/', (c) => c.json(ok(getData().todos)));
 
@@ -21,6 +22,7 @@ app.post('/', zValidator('json', z.object({ description: z.string().min(1), id: 
 
 app.patch('/:id', async (c) => {
   const id = c.req.param('id');
+  if (!getData().todos.find(t => t.id === id)) return c.json(notFound(), 404);
   const updates = await c.req.json<Partial<Pick<TodoItem, 'description' | 'startDate' | 'doneDate'>>>();
   const newData = svc.updateTodo(getData(), id, updates);
   await saveData(() => newData);
@@ -30,6 +32,7 @@ app.patch('/:id', async (c) => {
 
 app.post('/:id/toggle', async (c) => {
   const id = c.req.param('id');
+  if (!getData().todos.find(t => t.id === id)) return c.json(notFound(), 404);
   const newData = svc.toggleTodo(getData(), id);
   await saveData(() => newData);
   emitEvent('todo.updated', { id });
@@ -38,6 +41,7 @@ app.post('/:id/toggle', async (c) => {
 
 app.delete('/:id', async (c) => {
   const id = c.req.param('id');
+  if (!getData().todos.find(t => t.id === id)) return c.json(notFound(), 404);
   const newData = svc.deleteTodo(getData(), id);
   await saveData(() => newData);
   emitEvent('todo.deleted', { id });
@@ -45,10 +49,11 @@ app.delete('/:id', async (c) => {
 });
 
 app.post('/clear-done', async (c) => {
+  const beforeCount = getData().todos.length;
   const newData = svc.clearDoneTodos(getData());
   await saveData(() => newData);
   emitEvent('todos.updated');
-  return c.json(ok({ cleared: getData().todos.length - newData.todos.length }));
+  return c.json(ok({ cleared: beforeCount - newData.todos.length }));
 });
 
 app.post('/import', async (c) => {

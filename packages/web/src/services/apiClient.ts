@@ -4,6 +4,17 @@
 const BASE = '/api/v1';
 const SESSION_KEY = 'tt-token';
 
+export class ApiError extends Error {
+  status: number;
+  body: unknown;
+  constructor(status: number, body: unknown) {
+    super(`API error ${status}`);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+  }
+}
+
 async function fetchToken(): Promise<string> {
   const cached = sessionStorage.getItem(SESSION_KEY);
   if (cached) return cached;
@@ -29,10 +40,16 @@ async function headers(): Promise<HeadersInit> {
   return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
 }
 
+async function parseResponse<T>(res: Response): Promise<T> {
+  const body = await res.json();
+  if (!res.ok) throw new ApiError(res.status, body);
+  return body as T;
+}
+
 export const api = {
   async get<T = unknown>(path: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
     const res = await fetch(buildUrl(path, params), { headers: await headers() });
-    return res.json() as Promise<T>;
+    return parseResponse<T>(res);
   },
 
   async post<T = unknown>(path: string, body?: unknown): Promise<T> {
@@ -41,7 +58,7 @@ export const api = {
       headers: await headers(),
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
-    return res.json() as Promise<T>;
+    return parseResponse<T>(res);
   },
 
   async patch<T = unknown>(path: string, body: unknown): Promise<T> {
@@ -50,7 +67,7 @@ export const api = {
       headers: await headers(),
       body: JSON.stringify(body),
     });
-    return res.json() as Promise<T>;
+    return parseResponse<T>(res);
   },
 
   async delete<T = unknown>(path: string): Promise<T> {
@@ -58,7 +75,13 @@ export const api = {
       method: 'DELETE',
       headers: await headers(),
     });
-    return res.json() as Promise<T>;
+    return parseResponse<T>(res);
+  },
+
+  async getText(path: string, params?: Record<string, string | number | boolean | undefined>): Promise<string> {
+    const res = await fetch(buildUrl(path, params), { headers: await headers() });
+    if (!res.ok) throw new ApiError(res.status, await res.text());
+    return res.text();
   },
 
   /** Build SSE URL with token (token must already be cached). */
