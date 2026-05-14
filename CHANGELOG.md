@@ -4,6 +4,23 @@
 
 ---
 
+## [2.1.1] — 2026-05-14
+
+### 移除 (Removed)
+
+- **MCP 計時器工具 `timeslot_clock_in` / `timeslot_clock_out` 已移除**
+  - 無明確使用情境，由使用者直接以 `timeslot_create`（同時指定 startTime 與 endTime）補登時段
+  - `timeslot_create` 的 `endTime` 由選填改為**必填**，避免產生無結束時間的孤立紀錄
+  - 更新 `MCP_MANUAL.md` / `MCP_MANUAL.html`，工作流程範例改為 `timeslot_create` 用法
+
+### 文件 (Docs)
+
+- **新增 MCP 使用者手冊**（`docs/MCP_MANUAL.md` / `docs/MCP_MANUAL.html`）
+  - Part 1 速查表：所有工具依群組列表，含主要參數一覽
+  - Part 2 使用說明：每個工具的參數表與自然語言範例
+
+---
+
 ## [2.1.0] — 2026-05-14
 
 ### 新功能 (Features)
