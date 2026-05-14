@@ -1,7 +1,7 @@
 {
   "name": "task-time-tracker",
   "private": true,
-  "version": "2.0.0",
+  "version": "2.1.0",
   "workspaces": [
     "packages/*"
   ],
@@ -11,7 +11,8 @@
     "dev:server": "npm -w packages/server exec -- tsx src/index.ts",
     "build": "npm -w packages/web run build",
     "lint": "npm -w packages/web run lint",
-    "preview": "npm -w packages/web run preview"
+    "preview": "npm -w packages/web run preview",
+    "test": "npm -w packages/shared run test && npm -w packages/server run test"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

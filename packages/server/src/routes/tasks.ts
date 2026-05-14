@@ -29,6 +29,25 @@ app.get('/wbs-map', (c) => {
   return c.json(ok(result));
 });
 
+// GET /tasks/search?q=&archived=
+app.get('/search', (c) => {
+  const { q = '', archived } = c.req.query() as { q?: string; archived?: string };
+  const lower = q.toLowerCase();
+  let tasks = getData().tasks;
+  if (archived !== undefined) tasks = tasks.filter(t => !!t.archived === (archived === 'true'));
+  else tasks = tasks.filter(t => !t.archived);
+  const matched = tasks.filter(t =>
+    t.title.toLowerCase().includes(lower) ||
+    (t.aliasTitle ?? '').toLowerCase().includes(lower)
+  );
+  if (!archived || archived === 'false') {
+    const allActive = getData().tasks.filter(t => !t.archived);
+    const { wbsNumbers } = computeTaskWbsMap(allActive);
+    return c.json(ok(matched.map(t => ({ ...t, wbsNumber: wbsNumbers.get(t.id) ?? '' }))));
+  }
+  return c.json(ok(matched));
+});
+
 // GET /tasks/:id
 app.get('/:id', (c) => {
   const task = getData().tasks.find(t => t.id === c.req.param('id'));
@@ -161,6 +180,27 @@ app.patch('/:id/weekly-note', zValidator('json', z.object({
   await saveData(() => newData);
   emitEvent('task.updated', { id });
   return c.json(ok(newData.tasks.find(t => t.id === id)));
+});
+
+// POST /tasks/:taskId/outputs
+app.post('/:taskId/outputs', async (c) => {
+  const taskId = c.req.param('taskId');
+  if (!getData().tasks.find(t => t.id === taskId)) return c.json(notFound(), 404);
+  const input = await c.req.json<Omit<WorkOutput, 'id'>>();
+  const { data, output } = svc.addWorkOutput(getData(), taskId, input);
+  await saveData(() => data);
+  emitEvent('task.updated', { id: taskId });
+  return c.json(ok(output), 201);
+});
+
+// DELETE /tasks/:taskId/outputs/:outputId
+app.delete('/:taskId/outputs/:outputId', async (c) => {
+  const { taskId, outputId } = c.req.param();
+  if (!getData().tasks.find(t => t.id === taskId)) return c.json(notFound(), 404);
+  const newData = svc.deleteWorkOutput(getData(), taskId, outputId);
+  await saveData(() => newData);
+  emitEvent('task.updated', { id: taskId });
+  return c.json(ok({ outputId }));
 });
 
 // PATCH /tasks/:taskId/outputs/:outputId

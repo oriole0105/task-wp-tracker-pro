@@ -4,6 +4,39 @@
 
 ---
 
+## [2.1.0] — 2026-05-14
+
+### 新功能 (Features)
+
+- **MCP 工具 `task_search`：依關鍵字搜尋任務**
+  - 新增 REST `GET /api/v1/tasks/search?q=&archived=`，對 `title` 與 `aliasTitle` 做 case-insensitive 包含比對
+  - 未封存任務的搜尋結果附帶 `wbsNumber`，可直接接續 `task_output_add` 等操作
+  - 解決使用者僅知道任務名稱、無法直接取得 ID 時需要拉全量清單的問題
+
+- **MCP 工具 `output_type_list` 補實作**
+  - 新增 `packages/mcp/src/tools/settingsTools.ts`，提供 `output_type_list` 工具
+  - 呼叫 `GET /api/v1/output-types`，回傳含 `id`、`name`、`isTangible` 的產出類型清單
+  - `task_output_add` 的 `outputTypeId` 欄位現在有配套查詢工具，不需要事先知道 ID
+
+### 修正 (Bug Fixes)
+
+- **工作產出新增 / 刪除 Race Condition**
+  - 原本 `task_output_add` 和 `task_output_delete` 採「GET 讀取 → 客戶端組合 → PATCH 整個陣列」兩步驟；並發操作時後寫者會覆蓋先寫者的結果，導致產出資料遺失
+  - 新增 REST `POST /api/v1/tasks/:taskId/outputs`：在 server 的 in-memory mutex 保護內原子執行 append，同時自動建立初始完成度快照（與 `updateWorkOutput` 邏輯一致）
+  - 新增 REST `DELETE /api/v1/tasks/:taskId/outputs/:outputId`：在 mutex 保護內原子執行移除
+  - MCP `task_output_add` 改為呼叫 `POST /tasks/:taskId/outputs`（單次 request）
+  - MCP `task_output_delete` 改為呼叫 `DELETE /tasks/:taskId/outputs/:outputId`（單次 request）
+  - `taskService` 新增 `addWorkOutput`、`deleteWorkOutput` 純函式
+
+- **週報週期修正：改為週一至週五（工作週）**
+  - 原本 `computeGanttPeriod` 使用 `weekStartsOn: 0`（週日），產生週日～週六共 7 天的區間；錨點傳週五時會得到「上週日到本週六」而非本工作週
+  - `computeGanttPeriod`：`weekStartsOn: 0 → 1`（週一起算），期間改為 5 天（Mon–Fri）
+  - `computePrevPeriod`：上週同樣改為 5 天（Mon–Fri）
+  - `computePeriodLabels`（weekly）：`rangeDisplay` 改為顯示完整的 `起～迄` 日期範圍（例：`上週：2026-05-04～2026-05-08　→　本週：2026-05-11～2026-05-15`）
+  - MCP `report_weekly` 工具描述補充：「傳當週週五可精確指定，報告範圍為該週週一至週五」
+
+---
+
 ## [2.0.0] — 2026-05-02
 
 ### 架構重構 (Architecture)

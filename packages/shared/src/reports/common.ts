@@ -24,8 +24,8 @@ export interface PeriodLabels {
 
 export function computeGanttPeriod(reportType: ReportType, anchorDate: Date): Period {
   if (reportType === 'weekly') {
-    const weekStart = startOfWeek(anchorDate, { weekStartsOn: 0 });
-    return { start: startOfDay(weekStart), end: endOfDay(addDays(weekStart, 6)) };
+    const weekStart = startOfWeek(anchorDate, { weekStartsOn: 1 }); // Monday
+    return { start: startOfDay(weekStart), end: endOfDay(addDays(weekStart, 4)) }; // Mon–Fri
   }
   if (reportType === 'bimonthly') {
     const month = anchorDate.getMonth();
@@ -62,7 +62,7 @@ export function computeProgressPeriod(reportType: ReportType, anchorDate: Date, 
 export function computePrevPeriod(reportType: ReportType, progressPeriod: Period): Period {
   if (reportType === 'weekly') {
     const prevStart = subWeeks(progressPeriod.start, 1);
-    return { start: startOfDay(prevStart), end: endOfDay(addDays(prevStart, 6)) };
+    return { start: startOfDay(prevStart), end: endOfDay(addDays(prevStart, 4)) }; // Mon–Fri
   }
   if (reportType === 'bimonthly') {
     return {
@@ -84,7 +84,7 @@ export function computePeriodLabels(reportType: ReportType, progressPeriod: Peri
   if (reportType === 'weekly') {
     return {
       prevShort: '上週%', currShort: '本週%', deltaLabel: '週間△',
-      rangeDisplay: `上週：${pStart}　→　本週：${cStart}`,
+      rangeDisplay: `上週：${pStart}～${pEnd}　→　本週：${cStart}～${cEnd}`,
     };
   }
   return {

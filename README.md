@@ -22,15 +22,16 @@
 - **視覺化分析報表**
   - 使用圓餅圖分析主/次分類的時間分佈。
   - 智慧時間格式化，自動顯示為 `Xd Xh Xm`。
-- **數據私隱與安全**
-  - 所有資料均儲存於 **瀏覽器 LocalStorage**，無需伺服器，100% 離線可用。
-  - 提供分類架構的 **JSON 匯入與匯出** 功能。
+- **本機伺服器 + AI 操作介面**
+  - 資料儲存於本機 JSON 檔（`~/.task-time-tracker/data.json`），不依賴瀏覽器 LocalStorage。
+  - 提供 **REST API**（Hono server，port 5174）與 **MCP server**，讓 Claude Desktop / Claude Code 不開瀏覽器也能操作任務、時間紀錄、產出與報告。
+  - Bearer token 認證，僅 127.0.0.1 可存取，資料不對外暴露。
 
 ## 🛠️ 快速啟動
 
 ### 前置要求
-- [Node.js](https://nodejs.org/) (建議 v18 以上版本)
-- npm 或 yarn
+- [Node.js](https://nodejs.org/) v20 以上版本
+- npm
 
 ### 安裝步驟
 1. 複製此專案到本地
@@ -42,11 +43,11 @@
    ```bash
    npm install
    ```
-3. 啟動開發伺服器
+3. 啟動開發伺服器（同時啟動 Web UI 與 API server）
    ```bash
    npm run dev
    ```
-4. 開啟瀏覽器訪問 `http://localhost:5173`
+4. 開啟瀏覽器訪問 `http://localhost:5173`（API server 在 port 5174）
 
 ## 📖 相關文件
 
@@ -55,12 +56,10 @@
 
 ## 📝 技術堆疊
 
-- **Framework**: React 19 (Vite)
-- **Language**: TypeScript
-- **UI Component**: Material UI (MUI v6)
-- **State Management**: Zustand
-- **Charts**: Recharts
-- **Date Handling**: date-fns
+- **Frontend**: React 19 + Vite (rolldown-vite)、TypeScript、Material UI v7、Zustand、Recharts、date-fns
+- **Backend**: Hono + Node.js（REST API server）
+- **AI 整合**: MCP server（`@modelcontextprotocol/sdk`）
+- **Monorepo**: npm workspaces（`packages/web`、`packages/server`、`packages/mcp`、`packages/shared`）
 
 ## 📄 授權說明
 本專案採用 MIT 授權條款。

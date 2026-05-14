@@ -27,6 +27,21 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
   );
 
   server.tool(
+    'task_search',
+    '依關鍵字搜尋任務標題（title / aliasTitle），回傳符合的任務清單（含 wbsNumber）。比 task_list 更快找到指定任務，適合使用者只知道任務名稱的情境。',
+    {
+      q: z.string().describe('搜尋關鍵字（不區分大小寫）'),
+      archived: z.boolean().optional().describe('true=搜尋封存任務；省略=只搜尋未封存任務'),
+    },
+    async ({ q, archived }) => {
+      try {
+        const result = await api.get('/tasks/search', { q, archived });
+        return json(result);
+      } catch (e) { return handleError(e); }
+    },
+  );
+
+  server.tool(
     'task_find_by_wbs',
     '依 WBS 編號查找任務（如 "1"、"2.3"、"1.4.2"），回傳任務完整資料與 ID。WBS 編號可從 task_list 的結果 wbsNumber 欄位取得。找到任務後可直接用 task_update 的 id 欄位操作。',
     {
@@ -342,11 +357,7 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
     },
     async ({ taskId, name, outputTypeId, completeness, effectiveDate, link, summary }) => {
       try {
-        const task = await api.get(`/tasks/${taskId}`) as { data?: { outputs?: unknown[] } };
-        if (!task?.data) return text(`找不到任務 ${taskId}`);
-        const outputs = task.data.outputs ?? [];
-        const newOutput = { id: crypto.randomUUID(), name, outputTypeId, completeness, effectiveDate, link, summary, weeklySnapshots: [] };
-        const result = await api.patch(`/tasks/${taskId}`, { outputs: [...outputs, newOutput] });
+        const result = await api.post(`/tasks/${taskId}/outputs`, { name, outputTypeId, completeness, effectiveDate, link, summary });
         return json(result);
       } catch (e) { return handleError(e); }
     },
@@ -382,10 +393,7 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
     },
     async ({ taskId, outputId }) => {
       try {
-        const task = await api.get(`/tasks/${taskId}`) as { data?: { outputs?: Array<{ id: string }> } };
-        if (!task?.data) return text(`找不到任務 ${taskId}`);
-        const outputs = (task.data.outputs ?? []).filter(o => o.id !== outputId);
-        const result = await api.patch(`/tasks/${taskId}`, { outputs });
+        const result = await api.delete(`/tasks/${taskId}/outputs/${outputId}`);
         return json(result);
       } catch (e) { return handleError(e); }
     },

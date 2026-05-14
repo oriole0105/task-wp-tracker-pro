@@ -10,7 +10,7 @@ export function registerReportTools(server: McpServer, api: ApiClient): void {
     'report_weekly',
     '產生週報（AsciiDoc 格式或 JSON 摘要）。anchorDate 為報告所在週的任意日期，預設本週。',
     {
-      anchorDate: z.string().optional().describe('報告所在週的任意日期 YYYY-MM-DD（預設今日）'),
+      anchorDate: z.string().optional().describe('報告所在週的任意日期 YYYY-MM-DD（預設今日）。傳當週週五可精確指定，報告範圍為該週週一至週五'),
       format: FormatEnum.describe('輸出格式：adoc（預設）或 json（回傳期間摘要）'),
       levels: z.string().optional().describe('顯示階層，逗號分隔，如 "1,2,3"（預設 1-5）'),
       excluded: z.string().optional().describe('排除的主分類，逗號分隔'),

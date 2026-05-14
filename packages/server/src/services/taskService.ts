@@ -265,6 +265,36 @@ export function updateWorkOutput(data: AppData, taskId: string, outputId: string
   };
 }
 
+export function addWorkOutput(
+  data: AppData,
+  taskId: string,
+  input: Omit<WorkOutput, 'id'>,
+): { data: AppData; output: WorkOutput } {
+  const output: WorkOutput = { ...input, id: randomUUID(), weeklySnapshots: input.weeklySnapshots ?? [] };
+  if (input.completeness !== undefined) {
+    const val = typeof input.completeness === 'string' ? parseInt(input.completeness) || 0 : (input.completeness ?? 0);
+    output.weeklySnapshots = upsertSnapshot(output.weeklySnapshots, getCurrentWeekStart(), val);
+  }
+  const newData = {
+    ...data,
+    tasks: data.tasks.map(t => {
+      if (t.id !== taskId) return t;
+      return { ...t, updatedAt: Date.now(), outputs: [...(t.outputs ?? []), output] };
+    }),
+  };
+  return { data: newData, output };
+}
+
+export function deleteWorkOutput(data: AppData, taskId: string, outputId: string): AppData {
+  return {
+    ...data,
+    tasks: data.tasks.map(t => {
+      if (t.id !== taskId) return t;
+      return { ...t, updatedAt: Date.now(), outputs: (t.outputs ?? []).filter(o => o.id !== outputId) };
+    }),
+  };
+}
+
 export function getTaskTotalTime(data: AppData, taskId: string): number {
   return data.timeslots
     .filter(ts => ts.taskId === taskId && ts.endTime)
