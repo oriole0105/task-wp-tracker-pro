@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { ApiClient, json, text, handleError } from '../client.js';
+import { ApiClient, json, handleError } from '../client.js';
 
 export function registerTimeslotTools(server: McpServer, api: ApiClient): void {
 
@@ -29,7 +29,7 @@ export function registerTimeslotTools(server: McpServer, api: ApiClient): void {
     {
       taskId: z.string().optional().describe('關聯任務 ID（可不填）'),
       startTime: z.string().describe('開始時間（epoch ms 或 ISO 格式）'),
-      endTime: z.string().optional().describe('結束時間（不填代表進行中）'),
+      endTime: z.string().describe('結束時間（epoch ms 或 ISO 格式）'),
       subCategory: z.string().optional().default('').describe('子分類'),
       note: z.string().optional().describe('備注'),
     },
@@ -39,60 +39,12 @@ export function registerTimeslotTools(server: McpServer, api: ApiClient): void {
         const body = {
           taskId,
           startTime: toMs(startTime),
-          endTime: endTime ? toMs(endTime) : undefined,
+          endTime: toMs(endTime),
           subCategory: subCategory ?? '',
           note,
         };
         const result = await api.post('/timeslots', body);
         return json(result);
-      } catch (e) { return handleError(e); }
-    },
-  );
-
-  server.tool(
-    'timeslot_clock_in',
-    '開始計時（建立一筆無結束時間的時間紀錄，startTime = 現在）。如已有進行中的計時，新的計時會同時建立。',
-    {
-      taskId: z.string().optional().describe('要計時的任務 ID'),
-      subCategory: z.string().optional().default('').describe('子分類'),
-      note: z.string().optional().describe('備注'),
-    },
-    async ({ taskId, subCategory, note }) => {
-      try {
-        const body = {
-          taskId,
-          startTime: Date.now(),
-          subCategory: subCategory ?? '',
-          note,
-        };
-        const result = await api.post('/timeslots', body);
-        return json(result);
-      } catch (e) { return handleError(e); }
-    },
-  );
-
-  server.tool(
-    'timeslot_clock_out',
-    '結束計時（找到最近一筆無結束時間的時間紀錄，設定 endTime = 現在）。',
-    {
-      taskId: z.string().optional().describe('指定任務 ID，只結束此任務的計時（不填則結束最近一筆）'),
-    },
-    async ({ taskId }) => {
-      try {
-        const all = await api.get('/timeslots') as { data?: Array<{ id: string; startTime: number; endTime?: number; taskId?: string }> };
-        const timeslots = all?.data ?? [];
-        // 找最近一筆沒有 endTime 的
-        const open = timeslots
-          .filter(ts => !ts.endTime && (taskId ? ts.taskId === taskId : true))
-          .sort((a, b) => b.startTime - a.startTime);
-        if (open.length === 0) {
-          return text('找不到進行中的計時紀錄。');
-        }
-        const target = open[0];
-        const endTime = Date.now();
-        const result = await api.patch(`/timeslots/${target.id}`, { endTime });
-        const durationMin = ((endTime - target.startTime) / 60000).toFixed(1);
-        return text(`計時結束。時長：${durationMin} 分鐘\n\n${JSON.stringify(result, null, 2)}`);
       } catch (e) { return handleError(e); }
     },
   );

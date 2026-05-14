@@ -259,9 +259,7 @@
   <table>
     <tr><th>指令</th><th>用途</th><th>主要參數</th></tr>
     <tr><td><code>timeslot_list</code></td><td>列出時間紀錄</td><td><code>taskId</code> · <code>from</code> · <code>to</code></td></tr>
-    <tr><td><code>timeslot_clock_in</code></td><td>開始計時（startTime = 現在）</td><td><code>taskId</code> · <code>subCategory</code> · <code>note</code></td></tr>
-    <tr><td><code>timeslot_clock_out</code></td><td>結束計時（endTime = 現在）</td><td><code>taskId</code></td></tr>
-    <tr><td><code>timeslot_create</code></td><td>手動補登時間紀錄</td><td><code class="req">startTime*</code> · <code>taskId</code> · <code>endTime</code> · <code>subCategory</code> · <code>note</code></td></tr>
+    <tr><td><code>timeslot_create</code></td><td>新增時間紀錄</td><td><code class="req">startTime*</code> · <code class="req">endTime*</code> · <code>taskId</code> · <code>subCategory</code> · <code>note</code></td></tr>
     <tr><td><code>timeslot_update</code></td><td>更新時間紀錄</td><td><code class="req">id*</code> · <code>startTime</code> · <code>endTime</code> · <code>taskId</code> · <code>subCategory</code> · <code>note</code></td></tr>
     <tr><td><code>timeslot_delete</code></td><td>刪除時間紀錄</td><td><code class="req">id*</code></td></tr>
   </table>
@@ -698,33 +696,16 @@ task_output_add {
 
   <div class="tool-section">
     <div class="tool-header">
-      <span class="tool-id">timeslot_clock_in &nbsp;/&nbsp; timeslot_clock_out</span>
-      <span class="tool-desc">開始 / 結束計時。clock_in 建立無結束時間的紀錄；clock_out 找最近一筆補上結束時間</span>
-    </div>
-    <div class="tool-body">
-      <h4>範例</h4>
-      <div class="example-block">
-        <div class="example-user">「開始計時，任務 abc123，子分類程式開發」</div>
-        <pre>timeslot_clock_in { taskId: "abc123", subCategory: "程式開發" }</pre>
-        <div class="example-user">「結束計時」</div>
-        <pre>timeslot_clock_out
-→ 回傳：計時結束。時長：47.3 分鐘</pre>
-      </div>
-    </div>
-  </div>
-
-  <div class="tool-section">
-    <div class="tool-header">
       <span class="tool-id">timeslot_create</span>
-      <span class="tool-desc">手動補登過去的工作時段</span>
+      <span class="tool-desc">新增時間紀錄，需指定明確的開始與結束時間</span>
     </div>
     <div class="tool-body">
       <h4>參數</h4>
       <table>
         <tr><th>參數</th><th>必填</th><th>說明</th></tr>
         <tr><td><code>startTime</code></td><td><span class="req">是</span></td><td>開始時間（YYYY-MM-DDTHH:MM:SS 或 epoch ms）</td></tr>
+        <tr><td><code>endTime</code></td><td><span class="req">是</span></td><td>結束時間（YYYY-MM-DDTHH:MM:SS 或 epoch ms）</td></tr>
         <tr><td><code>taskId</code></td><td>否</td><td>關聯任務 ID</td></tr>
-        <tr><td><code>endTime</code></td><td>否</td><td>結束時間（不填 = 進行中）</td></tr>
         <tr><td><code>subCategory</code></td><td>否</td><td>時間分類</td></tr>
         <tr><td><code>note</code></td><td>否</td><td>備注</td></tr>
       </table>
@@ -920,20 +901,12 @@ holiday_delete { date: "2026-06-12" }</pre>
     <div class="workflow-step">
       <div class="step-num">1</div>
       <div class="step-content">
-        <div class="step-quote">「開始計時，任務 abc123，子分類程式開發」</div>
-        <code class="step-tool">timeslot_clock_in { taskId, subCategory }</code>
+        <div class="step-quote">「補登今天上午 9:00–11:30，任務 abc123，子分類程式開發」</div>
+        <code class="step-tool">timeslot_create { taskId, startTime: "2026-05-14T09:00:00", endTime: "2026-05-14T11:30:00", subCategory }</code>
       </div>
     </div>
     <div class="workflow-step">
       <div class="step-num">2</div>
-      <div class="step-content">
-        <div class="step-quote">「結束計時」</div>
-        <code class="step-tool">timeslot_clock_out</code>
-        → 自動回傳時長
-      </div>
-    </div>
-    <div class="workflow-step">
-      <div class="step-num">3</div>
       <div class="step-content">
         <div class="step-quote">「把任務 abc123 完成度更新為 60%」</div>
         <code class="step-tool">task_update { id, completeness: 60 }</code>

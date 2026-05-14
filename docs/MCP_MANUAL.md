@@ -62,9 +62,7 @@
 | 指令 | 用途 | 主要參數 |
 |---|---|---|
 | `timeslot_list` | 列出時間紀錄 | `taskId` · `from` · `to` |
-| `timeslot_clock_in` | 開始計時（startTime = 現在） | `taskId` · `subCategory` · `note` |
-| `timeslot_clock_out` | 結束計時（endTime = 現在） | `taskId` |
-| `timeslot_create` | 手動新增時間紀錄 | `startTime`* · `taskId` · `endTime` · `subCategory` · `note` |
+| `timeslot_create` | 新增時間紀錄 | `startTime`* · `endTime`* · `taskId` · `subCategory` · `note` |
 | `timeslot_update` | 更新時間紀錄 | `id`* · `startTime` · `endTime` · `taskId` · `subCategory` · `note` |
 | `timeslot_delete` | 刪除時間紀錄 | `id`* |
 
@@ -569,50 +567,15 @@ WBS 編號可從 `task_list` 的 `wbsNumber` 欄位取得，格式如 `"1"`、`"
 
 ---
 
-### `timeslot_clock_in` — 開始計時
+### `timeslot_create` — 新增時間紀錄
 
-建立一筆 startTime = 現在、無 endTime 的時間紀錄。
-
-| 參數 | 必填 | 說明 |
-|---|---|---|
-| `taskId` | 否 | 要計時的任務 ID |
-| `subCategory` | 否 | 時間分類，如 `程式開發`、`文件撰寫` |
-| `note` | 否 | 備注 |
-
-**範例**
-```
-使用者：「開始計時，任務 abc123，子分類程式開發」
-→ timeslot_clock_in { taskId: "abc123", subCategory: "程式開發" }
-```
-
----
-
-### `timeslot_clock_out` — 結束計時
-
-找到最近一筆無 endTime 的紀錄，設定 endTime = 現在，回傳時長。
-
-| 參數 | 必填 | 說明 |
-|---|---|---|
-| `taskId` | 否 | 指定任務（不填則結束最近一筆） |
-
-**範例**
-```
-使用者：「結束計時」
-→ timeslot_clock_out
-回傳：計時結束。時長：47.3 分鐘
-```
-
----
-
-### `timeslot_create` — 手動新增時間紀錄
-
-補登過去的工作時段。
+補登工作時段，需指定明確的開始與結束時間。
 
 | 參數 | 必填 | 說明 |
 |---|---|---|
 | `startTime` | 是 | 開始時間（`YYYY-MM-DDTHH:MM:SS` 或 epoch ms） |
+| `endTime` | 是 | 結束時間（`YYYY-MM-DDTHH:MM:SS` 或 epoch ms） |
 | `taskId` | 否 | 關聯任務 ID |
-| `endTime` | 否 | 結束時間（不填 = 進行中） |
 | `subCategory` | 否 | 時間分類 |
 | `note` | 否 | 備注 |
 
@@ -898,13 +861,15 @@ holiday_delete { date: "2026-06-12" }
 ### 1. 當日工作記錄
 
 ```
-① 「開始計時，任務 abc123，子分類程式開發」
-   → timeslot_clock_in
+① 「補登一筆時間，今天上午 9:00-11:30，任務 abc123，子分類程式開發」
+   → timeslot_create {
+        taskId: "abc123",
+        startTime: "2026-05-14T09:00:00",
+        endTime: "2026-05-14T11:30:00",
+        subCategory: "程式開發"
+      }
 
-② 做完後：「結束計時」
-   → timeslot_clock_out（自動回傳時長）
-
-③ 「把任務 abc123 完成度更新為 60%」
+② 「把任務 abc123 完成度更新為 60%」
    → task_update { completeness: 60 }
 ```
 
