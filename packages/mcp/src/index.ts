@@ -6,7 +6,6 @@ import { registerTimeslotTools } from './tools/timeslotTools.js';
 import { registerTodoTools } from './tools/todoTools.js';
 import { registerReportTools } from './tools/reportTools.js';
 import { registerDataTools } from './tools/dataTools.js';
-import { registerSettingsTools } from './tools/settingsTools.js';
 
 const server = new McpServer({
   name: 'task-time-tracker',
@@ -20,7 +19,6 @@ registerTimeslotTools(server, api);
 registerTodoTools(server, api);
 registerReportTools(server, api);
 registerDataTools(server, api);
-registerSettingsTools(server, api);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
