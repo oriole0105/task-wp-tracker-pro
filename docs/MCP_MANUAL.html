@@ -286,7 +286,7 @@
   </div>
   <table>
     <tr><th>指令</th><th>用途</th><th>主要參數</th></tr>
-    <tr><td><code>report_weekly</code></td><td>產生週報（adoc / json）</td><td><code>anchorDate</code> · <code>format</code> · <code>levels</code> · <code>excluded</code> · <code>showTodayMark</code> · <code>groupByCategory</code></td></tr>
+    <tr><td><code>report_weekly</code></td><td>產生週報（AsciiDoc）</td><td><code>anchorDate</code> · <code>levels</code> · <code>excluded</code> · <code>showTodayMark</code> · <code>groupByCategory</code></td></tr>
     <tr><td><code>report_bi_monthly</code></td><td>產生雙月盤點報告</td><td><code>anchorDate</code> · <code>format</code> · <code>levels</code> · <code>excluded</code></td></tr>
     <tr><td><code>report_half_year</code></td><td>產生半年報</td><td><code>anchorDate</code> · <code>format</code> · <code>levels</code> · <code>excluded</code> · <code>ganttScale</code></td></tr>
     <tr><td><code>report_calendar_ics</code></td><td>匯出時間紀錄為 ICS 日曆</td><td><code>from</code> · <code>to</code></td></tr>
@@ -762,7 +762,7 @@ task_output_add {
       <table>
         <tr><th>參數</th><th>必填</th><th>說明</th></tr>
         <tr><td><code>anchorDate</code></td><td>否</td><td>報告所在週的任意日期 YYYY-MM-DD（預設今日）</td></tr>
-        <tr><td><code>format</code></td><td>否</td><td><code>adoc</code>（預設，AsciiDoc 文字）或 <code>json</code>（結構化摘要）</td></tr>
+        <tr><td><code>format</code></td><td>否</td><td>固定 <code>adoc</code>，回傳 AsciiDoc 全文</td></tr>
         <tr><td><code>levels</code></td><td>否</td><td>顯示 WBS 階層，逗號分隔，如 "1,2,3"（預設 1–5）</td></tr>
         <tr><td><code>excluded</code></td><td>否</td><td>排除的主分類，如 "固定會議,行政"</td></tr>
         <tr><td><code>showTodayMark</code></td><td>否</td><td>甘特圖顯示今日標記（預設 true）</td></tr>

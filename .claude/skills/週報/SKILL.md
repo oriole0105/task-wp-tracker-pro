@@ -98,17 +98,16 @@ description: 引導式週報產生流程：確認各任務本週快照 → 確�
 ## 階段三：產生週報
 
 所有資料確認完畢後，詢問：
-> 「資料都準備好了，現在產生週報嗎？  
-> 格式：AsciiDoc（預設）或 JSON？」
+> 「資料都準備好了，現在產生週報嗎？」
 
-根據使用者選擇呼叫：
+呼叫：
 ```
-report_weekly { anchorDate: "<weekEnd>", format: "adoc" | "json" }
+report_weekly { anchorDate: "<weekEnd>", format: "adoc" }
 ```
 
 **輸出後：**
 
-直接呈現週報內容（AsciiDoc 全文或 JSON），不需要額外包裝。
+直接呈現週報的 AsciiDoc 全文，不需要額外包裝。
 
 最後一行提示：
 > 「週報已產生。可以直接複製上方內容貼入週報文件。」

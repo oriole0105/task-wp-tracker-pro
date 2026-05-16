@@ -81,7 +81,7 @@
 
 | 指令 | 用途 | 主要參數 |
 |---|---|---|
-| `report_weekly` | 產生週報（adoc / json） | `anchorDate` · `format` · `levels` · `excluded` · `showTodayMark` · `groupByCategory` |
+| `report_weekly` | 產生週報（AsciiDoc） | `anchorDate` · `levels` · `excluded` · `showTodayMark` · `groupByCategory` |
 | `report_bi_monthly` | 產生雙月盤點報告 | `anchorDate` · `format` · `levels` · `excluded` |
 | `report_half_year` | 產生半年報 | `anchorDate` · `format` · `levels` · `excluded` · `ganttScale` |
 | `report_calendar_ics` | 匯出時間紀錄為 ICS 日曆 | `from` · `to` |
@@ -678,7 +678,7 @@ todo_clear_done                  ← 清除所有已完成
 | 參數 | 必填 | 說明 |
 |---|---|---|
 | `anchorDate` | 否 | 報告所在週的任意日期 `YYYY-MM-DD`（預設今日） |
-| `format` | 否 | `adoc`（預設，回傳 AsciiDoc 文字）或 `json`（回傳結構化摘要） |
+| `format` | 否 | 固定 `adoc`，回傳 AsciiDoc 全文 |
 | `levels` | 否 | 顯示 WBS 階層，逗號分隔，如 `"1,2,3"`（預設 1–5） |
 | `excluded` | 否 | 排除的主分類，逗號分隔，如 `"固定會議,行政"` |
 | `showTodayMark` | 否 | 甘特圖顯示今日標記（預設 `true`） |
