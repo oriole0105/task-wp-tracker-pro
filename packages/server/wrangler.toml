@@ -1,0 +1,12 @@
+name = "task-time-tracker"
+main = "src/cloudflare-entry.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "task-time-tracker"
+database_id = "your-d1-database-id-here"
+
+# 部署後執行: wrangler secret put TT_TOKEN
+# TT_TOKEN 不寫在這裡，避免洩漏

@@ -1,8 +1,3 @@
-import { readFile, writeFile, rename, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
-import { tmpdir, homedir } from 'os';
-import { join } from 'path';
-import { randomBytes } from 'crypto';
 import type { Task, Timeslot, TodoItem, OutputType, Member } from '@tt/shared/types';
 
 export interface AppSettings {
@@ -23,20 +18,7 @@ export interface AppData {
   settings: AppSettings;
 }
 
-interface StoredFile {
-  schemaVersion: number;
-  data: AppData;
-  updatedAt: string;
-}
-
-const SCHEMA_VERSION = 3;
-
-export const DATA_DIR = process.env.TT_DATA_DIR ?? join(homedir(), '.task-time-tracker');
-export const DATA_FILE = join(DATA_DIR, 'data.json');
-const TOKEN_FILE = join(DATA_DIR, 'token');
-
-let cache: AppData | null = null;
-let writeQueue: Promise<void> = Promise.resolve();
+export const SCHEMA_VERSION = 3;
 
 export function emptyData(): AppData {
   return {
@@ -62,76 +44,52 @@ export function emptyData(): AppData {
   };
 }
 
-export async function ensureDataDir(): Promise<void> {
-  if (!existsSync(DATA_DIR)) {
-    await mkdir(DATA_DIR, { recursive: true });
-  }
+// ── IStore interface ──────────────────────────────────────────────────────────
+
+export interface IStore {
+  loadData(): Promise<AppData>;
+  getData(): AppData;
+  saveData(updater: (d: AppData) => AppData): Promise<AppData>;
+  getToken(): Promise<string>;
+  dataExists(): boolean;
+  importBootstrap(rawState: Partial<AppData>): Promise<void>;
 }
 
-export async function getToken(): Promise<string> {
-  await ensureDataDir();
-  try {
-    const token = await readFile(TOKEN_FILE, 'utf-8');
-    return token.trim();
-  } catch {
-    const token = randomBytes(32).toString('hex');
-    await writeFile(TOKEN_FILE, token, { mode: 0o600 });
-    return token;
-  }
+// ── Active store (set at startup) ─────────────────────────────────────────────
+
+let _store: IStore | null = null;
+
+export function initStore(store: IStore): void {
+  _store = store;
 }
+
+function store(): IStore {
+  if (!_store) throw new Error('Store not initialized — call initStore() first');
+  return _store;
+}
+
+// ── Public API (delegates to active store) ────────────────────────────────────
 
 export async function loadData(): Promise<AppData> {
-  if (cache) return cache;
-  await ensureDataDir();
-  try {
-    const raw = await readFile(DATA_FILE, 'utf-8');
-    const stored: StoredFile = JSON.parse(raw) as StoredFile;
-    if ((stored.schemaVersion ?? 0) < SCHEMA_VERSION) {
-      const bakFile = join(DATA_DIR, `data.json.bak.v${stored.schemaVersion ?? 0}`);
-      await writeFile(bakFile, raw, 'utf-8').catch(() => {});
-      console.warn(`[fileStore] schemaVersion ${stored.schemaVersion ?? 0} → ${SCHEMA_VERSION}，舊資料已備份至 ${bakFile}`);
-    }
-    cache = stored.data;
-    return cache;
-  } catch {
-    cache = emptyData();
-    return cache;
-  }
+  return store().loadData();
 }
 
 export function getData(): AppData {
-  if (!cache) throw new Error('Data not loaded — call loadData() first');
-  return cache;
+  return store().getData();
 }
 
-async function atomicWrite(data: AppData): Promise<void> {
-  const stored: StoredFile = {
-    schemaVersion: SCHEMA_VERSION,
-    data,
-    updatedAt: new Date().toISOString(),
-  };
-  const tmpFile = join(tmpdir(), `tt-data-${Date.now()}.json`);
-  await writeFile(tmpFile, JSON.stringify(stored, null, 2), 'utf-8');
-  await rename(tmpFile, DATA_FILE);
+export async function saveData(updater: (d: AppData) => AppData): Promise<AppData> {
+  return store().saveData(updater);
 }
 
-export async function saveData(updater: (data: AppData) => AppData): Promise<AppData> {
-  writeQueue = writeQueue.then(async () => {
-    const updated = updater(getData());
-    cache = updated;
-    await atomicWrite(updated);
-  });
-  await writeQueue;
-  return getData();
+export async function getToken(): Promise<string> {
+  return store().getToken();
 }
 
 export function dataFileExists(): boolean {
-  return existsSync(DATA_FILE);
+  return store().dataExists();
 }
 
 export async function importBootstrap(rawState: Partial<AppData>): Promise<void> {
-  await ensureDataDir();
-  const merged: AppData = { ...emptyData(), ...rawState };
-  cache = merged;
-  await atomicWrite(merged);
+  return store().importBootstrap(rawState);
 }

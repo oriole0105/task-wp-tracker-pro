@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { format } from 'date-fns';
-import { DATA_DIR, DATA_FILE } from './store/fileStore.js';
+import { DATA_DIR, DATA_FILE } from './store/nodeFileStore.js';
 import { backupNow, pruneOldBackups, BACKUP_DIR } from './store/backup.js';
 
 const TOKEN_FILE = join(DATA_DIR, 'token');

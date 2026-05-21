@@ -7,8 +7,8 @@ import type { AppData } from '../store/fileStore.js';
 
 const app = new Hono();
 
-/** Allow only loopback connections — defence-in-depth for sensitive unauthenticated endpoints. */
 function isLocalRequest(c: Context): boolean {
+  if (process.env.TT_RUNTIME === 'cloudflare') return false; // CF 沒有 localhost 概念
   const env = c.env as { incoming?: { socket?: { remoteAddress?: string } } };
   const addr = env.incoming?.socket?.remoteAddress ?? '';
   return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
@@ -21,6 +21,9 @@ app.get('/health', (c) => {
 
 // GET /system/handshake — web UI fetches the token on startup; restricted to loopback
 app.get('/handshake', async (c) => {
+  if (process.env.TT_RUNTIME === 'cloudflare') {
+    return c.json({ ok: false, error: { code: 'FORBIDDEN', message: 'Use your configured token to authenticate.' } }, 403);
+  }
   if (!isLocalRequest(c)) {
     return c.json({ ok: false, error: { code: 'FORBIDDEN', message: 'This endpoint is only accessible from localhost.' } }, 403);
   }
@@ -30,6 +33,9 @@ app.get('/handshake', async (c) => {
 
 // POST /system/import-localstorage — first-boot migration; restricted to loopback
 app.post('/import-localstorage', async (c) => {
+  if (process.env.TT_RUNTIME === 'cloudflare') {
+    return c.json({ ok: false, error: { code: 'FORBIDDEN', message: 'Not available in cloud mode.' } }, 403);
+  }
   if (!isLocalRequest(c)) {
     return c.json({ ok: false, error: { code: 'FORBIDDEN', message: 'This endpoint is only accessible from localhost.' } }, 403);
   }
@@ -52,9 +58,7 @@ app.get('/events', (c) => {
         // client disconnected
       }
     });
-    // Send initial ping
     await stream.writeSSE({ data: JSON.stringify({ type: 'connected' }), event: 'connected' });
-    // Keep alive until client disconnects
     await new Promise<void>((resolve) => {
       stream.onAbort(() => { unsub(); resolve(); });
     });

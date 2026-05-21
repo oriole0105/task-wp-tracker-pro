@@ -26,6 +26,10 @@
   - 資料儲存於本機 JSON 檔（`~/.task-time-tracker/data.json`），不依賴瀏覽器 LocalStorage。
   - 提供 **REST API**（Hono server，port 5174）與 **MCP server**，讓 Claude Desktop / Claude Code 不開瀏覽器也能操作任務、時間紀錄、產出與報告。
   - Bearer token 認證，僅 127.0.0.1 可存取，資料不對外暴露。
+- **Cloudflare 雲端部署支援**
+  - 同一份程式碼支援本機（Node.js）與雲端（Cloudflare Workers + D1）兩種部署模式。
+  - 每位使用者自行部署，資料完全隔離，免費額度足夠個人使用。
+  - MCP server 維持本機執行，改兩個環境變數即可操作雲端資料。
 
 ## 🛠️ 快速啟動
 
@@ -52,6 +56,9 @@
 ## 📖 相關文件
 
 - **使用者手冊**: [USER_GUIDE.adoc](./USER_GUIDE.adoc) - 詳細的功能說明與操作教學。
+- **AI 操作指南**: [docs/HUMAN_GUIDE.md](./docs/HUMAN_GUIDE.md) - 如何透過 Claude 以自然語言操作系統。
+- **MCP 工具手冊**: [docs/MCP_MANUAL.md](./docs/MCP_MANUAL.md) - 所有 MCP 工具的參數說明與範例。
+- **Cloudflare 部署指南**: [docs/CLOUDFLARE_DEPLOY.md](./docs/CLOUDFLARE_DEPLOY.md) - 完整雲端部署步驟。
 - **產品介紹簡報**: [PRESENTATION.md](./PRESENTATION.md) - 使用 Marp 撰寫的介紹投影片。
 
 ## 📝 技術堆疊

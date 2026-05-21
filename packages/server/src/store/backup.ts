@@ -2,7 +2,7 @@ import { readFile, writeFile, readdir, unlink, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { format } from 'date-fns';
-import { DATA_DIR, DATA_FILE } from './fileStore.js';
+import { DATA_DIR, DATA_FILE } from './nodeFileStore.js';
 
 export const BACKUP_DIR = join(DATA_DIR, 'backups');
 const MAX_DAILY_BACKUPS = 7;

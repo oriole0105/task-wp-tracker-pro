@@ -12,6 +12,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { MobileBottomNav } from './MobileBottomNav';
 import { OfflineBanner } from './OfflineBanner';
 import { MigrationWizard } from './MigrationWizard';
+import { TokenLoginDialog } from './TokenLoginDialog';
 import { useApiHydration } from '../hooks/useApiHydration';
 import { useSseSync } from '../hooks/useSseSync';
 
@@ -31,7 +32,7 @@ export const Layout: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-  const { doHydrate } = useApiHydration();
+  const { doHydrate, tokenRequired, setTokenRequired } = useApiHydration();
   useSseSync(doHydrate);
 
   useEffect(() => {
@@ -145,6 +146,14 @@ export const Layout: React.FC = () => {
       {isMobile && <MobileBottomNav />}
 
       <MigrationWizard onComplete={doHydrate} />
+
+      <TokenLoginDialog
+        open={tokenRequired}
+        onSuccess={() => {
+          setTokenRequired(false);
+          void doHydrate();
+        }}
+      />
 
       <Snackbar
         open={!!toastMsg}

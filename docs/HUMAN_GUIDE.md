@@ -152,6 +152,25 @@
 
 ---
 
+## 雲端模式
+
+若系統部署在 Cloudflare 上（而非本機），首次開啟 Web UI 時會出現 **Token 輸入視窗**。
+
+輸入部署時設定的 `TT_TOKEN`，按確認後 token 會存入瀏覽器，之後不需要再輸入。
+
+MCP server 仍在本機執行，確認 Claude MCP 設定中的 `TT_API_URL` 指向你的 Workers 網址：
+
+```json
+"env": {
+  "TT_API_URL": "https://task-time-tracker.your-name.workers.dev",
+  "TT_TOKEN": "你設定的 token"
+}
+```
+
+詳細部署步驟請參考 [CLOUDFLARE_DEPLOY.md](./CLOUDFLARE_DEPLOY.md)。
+
+---
+
 ## 常見問題
 
 **Q：AI 說找不到任務，怎麼辦？**  
@@ -168,6 +187,9 @@ A：用來在報表中分析你的時間花在哪類工作上，例如「程式�
 
 **Q：系統沒有回應？**  
 A：確認 `npm run dev` 有在跑。可以在終端機確認 `http://localhost:5174` 是否可連線。
+
+**Q：雲端模式 Token 忘了怎麼辦？**  
+A：在 `packages/server` 目錄下執行 `wrangler secret put TT_TOKEN` 重設一組新 token，然後在瀏覽器清除 localStorage 後重新輸入。
 
 ---
 

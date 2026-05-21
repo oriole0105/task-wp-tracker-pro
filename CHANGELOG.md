@@ -4,6 +4,36 @@
 
 ---
 
+## [2.2.0] — 2026-05-22
+
+### 新功能 (Features)
+
+- **Cloudflare Workers 雲端部署支援**
+  - 儲存層抽象化（`IStore` 介面），同一份 server 程式碼可在 Node.js 本機與 Cloudflare Workers 兩個環境執行
+  - 新增 `D1Store`：使用 Cloudflare D1（SQLite）取代本機 JSON 檔，資料持久化於雲端
+  - 新增 `cloudflare-entry.ts`：Cloudflare Workers 入口點，每次 request 自動注入 D1 binding
+  - 新增 `wrangler.toml` 與 `migrations/0001_init.sql`，支援 `wrangler deploy` 一鍵部署
+  - Web UI 雲端模式：`/system/handshake` 回 403 時自動偵測為雲端模式，顯示 Token 輸入 Dialog
+  - Token 改為使用者自行設定的 `TT_TOKEN`（wrangler secret），儲存於瀏覽器 localStorage
+
+- **共用 Hono app factory (`app.ts`)**
+  - 抽出 `createApp()` 函式，讓 Node.js 和 Cloudflare 入口共用同一份路由設定
+  - 所有 route handler 零改動
+
+### 架構變更 (Architecture)
+
+- `packages/server/src/store/fileStore.ts` 改為 façade 層，不再直接操作檔案系統
+- 原本的 Node.js 檔案讀寫邏輯移至 `nodeFileStore.ts`（`NodeFileStore` class）
+- `backup.ts` 與 `cli.ts` 的 `DATA_DIR`/`DATA_FILE` import 改從 `nodeFileStore.ts`
+
+### 文件 (Docs)
+
+- 新增 `docs/CLOUDFLARE_DEPLOY.md`：完整 Cloudflare 部署步驟教學
+- 更新 `README.md`：加入雲端部署說明與文件連結
+- 更新 `docs/HUMAN_GUIDE.md`：加入雲端模式 Token 登入說明
+
+---
+
 ## [2.1.1] — 2026-05-14
 
 ### 移除 (Removed)

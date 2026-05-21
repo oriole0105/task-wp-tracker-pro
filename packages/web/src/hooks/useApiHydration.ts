@@ -1,5 +1,5 @@
-import { useCallback, useEffect } from 'react';
-import { api } from '../services/apiClient';
+import { useCallback, useEffect, useState } from 'react';
+import { api, TokenRequiredError } from '../services/apiClient';
 import { useTaskStore } from '../store/useTaskStore';
 import type { ServerExportData } from '../store/useTaskStore';
 
@@ -7,6 +7,7 @@ export function useApiHydration() {
   const hydrate = useTaskStore(s => s._hydrate);
   const setOffline = useTaskStore(s => s._setOffline);
   const setBootstrapRequired = useTaskStore(s => s._setBootstrapRequired);
+  const [tokenRequired, setTokenRequired] = useState(false);
 
   const doHydrate = useCallback(async () => {
     try {
@@ -15,7 +16,11 @@ export function useApiHydration() {
         hydrate(result.data);
       }
       setOffline(false);
-    } catch {
+    } catch (err) {
+      if (err instanceof TokenRequiredError) {
+        setTokenRequired(true);
+        return;
+      }
       setOffline(true);
     }
   }, [hydrate, setOffline]);
@@ -36,5 +41,5 @@ export function useApiHydration() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { doHydrate };
+  return { doHydrate, tokenRequired, setTokenRequired };
 }
