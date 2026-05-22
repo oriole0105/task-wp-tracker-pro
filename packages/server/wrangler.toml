@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "task-time-tracker"
-database_id = "your-d1-database-id-here"
+database_id = "49802aa8-f2c8-40fd-ae14-95d38e6fb940"
 
 # 部署後執行: wrangler secret put TT_TOKEN
 # TT_TOKEN 不寫在這裡，避免洩漏

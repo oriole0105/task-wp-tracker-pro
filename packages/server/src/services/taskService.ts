@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { format, startOfWeek } from 'date-fns';
 import type { Task, Timeslot, TodoItem, WorkOutput, WeeklySnapshot, OutputType, Member, JsonImportTask } from '@tt/shared/types';
 import { getAllDescendantIds, propagateStatusToAncestors } from '@tt/shared/utils/taskHierarchy';
