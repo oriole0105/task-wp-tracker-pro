@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, TokenRequiredError } from '../services/apiClient';
+import { api, API_ORIGIN, TokenRequiredError } from '../services/apiClient';
 import { useTaskStore } from '../store/useTaskStore';
 import type { ServerExportData } from '../store/useTaskStore';
 
@@ -26,7 +26,7 @@ export function useApiHydration() {
   }, [hydrate, setOffline]);
 
   useEffect(() => {
-    fetch('/system/health')
+    fetch(`${API_ORIGIN}/system/health`)
       .then(r => r.json())
       .then((health: { data?: { bootstrapRequired?: boolean } }) => {
         if (health?.data?.bootstrapRequired) {

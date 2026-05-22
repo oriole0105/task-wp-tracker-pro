@@ -1,7 +1,10 @@
 // Typed HTTP client for the task-time-tracker server.
 // Token is fetched once from /system/handshake and cached in sessionStorage.
 
-const BASE = '/api/v1';
+// VITE_API_BASE is set at build time for cloud deployments (e.g. https://x.workers.dev)
+export const API_ORIGIN = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, '') ?? '';
+const BASE = `${API_ORIGIN}/api/v1`;
+const SYSTEM_BASE = `${API_ORIGIN}/system`;
 const SESSION_KEY = 'tt-token';
 const CLOUD_TOKEN_KEY = 'tt-cloud-token';
 
@@ -28,7 +31,7 @@ async function fetchToken(): Promise<string> {
   if (cached) return cached;
 
   // 嘗試自動取得 token（本機模式）
-  const res = await fetch('/system/handshake');
+  const res = await fetch(`${SYSTEM_BASE}/handshake`);
   if (res.ok) {
     const { data } = await res.json() as { data: { token: string } };
     sessionStorage.setItem(SESSION_KEY, data.token);
@@ -59,7 +62,7 @@ export function clearCloudToken(): void {
 }
 
 function buildUrl(path: string, params?: Record<string, string | number | boolean | undefined>): string {
-  const url = new URL(BASE + path, window.location.origin);
+  const url = new URL(BASE + path, API_ORIGIN || window.location.origin);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined) url.searchParams.set(k, String(v));
@@ -120,7 +123,7 @@ export const api = {
   /** Build SSE URL with token (token must already be cached). */
   async sseUrl(): Promise<string> {
     const token = await fetchToken();
-    const url = new URL('/system/events', window.location.origin);
+    const url = new URL(`${SYSTEM_BASE}/events`, API_ORIGIN || window.location.origin);
     url.searchParams.set('token', token);
     return url.toString();
   },
