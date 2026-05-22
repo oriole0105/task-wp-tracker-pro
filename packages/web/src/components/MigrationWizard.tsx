@@ -3,6 +3,7 @@ import {
   Alert, Box, Button, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
 } from '@mui/material';
+import { api } from '../services/apiClient';
 import { useTaskStore } from '../store/useTaskStore';
 
 interface Props {
@@ -34,16 +35,7 @@ export const MigrationWizard: React.FC<Props> = ({ onComplete }) => {
         }
       }
 
-      const res = await fetch('/system/import-localstorage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state }),
-      });
-      const json = await res.json() as { ok?: boolean; error?: { code?: string; message?: string } };
-
-      if (!res.ok && json.error?.code !== 'ALREADY_BOOTSTRAPPED') {
-        throw new Error(json.error?.message ?? '操作失敗');
-      }
+      await api.post('/data/import', state);
 
       await onComplete();
       setBootstrapRequired(false);
