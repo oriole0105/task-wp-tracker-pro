@@ -29,8 +29,9 @@ interface TaskFormProps {
 export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, parentId }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const { tasks, timeslots, mainCategories, outputTypes, members, addTask, updateTask, getTaskById } = useTaskStore();
+  const { tasks, timeslots, mainCategories, outputTypes, members, addTask, updateTask, getTaskById, currentUser } = useTaskStore();
   const memberNames = members.map(m => m.name).filter(n => n.trim() !== '');
+  const showWorkspace = !!currentUser && currentUser.id !== 'local-admin';
 
   const [title, setTitle] = useState('');
   const [aliasTitle, setAliasTitle] = useState('');
@@ -55,6 +56,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
   const [trackCompleteness, setTrackCompleteness] = useState(true);
   const [completenessType, setCompletenessType] = useState<'real' | 'confidence'>('confidence');
   const [currentParentId, setCurrentParentId] = useState<string>('');
+  const [workspace, setWorkspace] = useState<'shared' | 'personal'>('shared');
 
   // --- Timeline entries state ---
   const [timelineEntries, setTimelineEntries] = useState<TaskTimelineEntry[]>([]);
@@ -119,6 +121,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       setTimelineEntries(initialData.timelineEntries ?? []);
       setLabels(initialData.labels || []);
       setCurrentParentId(initialData.parentId || '');
+      setWorkspace((initialData.workspace as 'shared' | 'personal') ?? 'shared');
       setShowAdvanced(!!(initialData.aliasTitle || initialData.description || initialData.assignee || initialData.reporter || (initialData.labels && initialData.labels.length > 0)));
       setShowTimeline((initialData.timelineEntries ?? []).length > 0);
     } else if (parentId) {
@@ -232,6 +235,9 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       timelineEntries,
       labels,
       parentId: currentParentId || undefined,
+      workspace: showWorkspace && workspace === 'personal' && currentUser
+        ? currentUser.id
+        : 'shared',
     };
 
     if (initialData) {
@@ -305,6 +311,19 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
           </Grid>
 
           {/* 設定參數區塊（緊接在上層任務之後） */}
+          {showWorkspace && (
+            <Grid size={{ xs: 12 }}>
+              <ToggleButtonGroup
+                value={workspace}
+                exclusive
+                onChange={(_, v) => { if (v) setWorkspace(v); }}
+                size="small"
+              >
+                <ToggleButton value="shared">共用工作區</ToggleButton>
+                <ToggleButton value="personal">個人工作區</ToggleButton>
+              </ToggleButtonGroup>
+            </Grid>
+          )}
           <Grid size={{ xs: 12 }} sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
             <FormControlLabel
               control={<Checkbox checked={showInWbs} onChange={(e) => setShowInWbs(e.target.checked)} size="small" />}

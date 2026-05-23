@@ -3,7 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { format, startOfWeek } from 'date-fns';
 import type { Task, CategoryData, WorkOutput, Timeslot, OutputType, WeeklySnapshot, Member, JsonImportTask, TodoItem } from '@tt/shared/types';
 import { getAllDescendantIds, propagateStatusToAncestors, type StatusChangeInfo } from '@tt/shared/utils/taskHierarchy';
-import { api, fireSync, setApiErrorHandler } from '../services/apiClient';
+import { api, fireSync, setApiErrorHandler, authApi } from '../services/apiClient';
+import type { AuthUser } from '@tt/shared/types';
 
 const getCurrentWeekStart = (): string =>
   format(startOfWeek(new Date(), { weekStartsOn: 0 }), 'yyyy-MM-dd');
@@ -66,6 +67,7 @@ interface TaskState {
   _hydrated: boolean;
   _offline: boolean;
   _bootstrapRequired: boolean;
+  currentUser: AuthUser | null;
   _hydrate: (data: ServerExportData) => void;
   _setOffline: (v: boolean) => void;
   _setBootstrapRequired: (v: boolean) => void;
@@ -166,6 +168,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
   _bootstrapRequired: false,
   _lastAutoStatusChange: null,
   _lastApiError: null,
+  currentUser: null,
 
   setQuickAddAction: (action) => set({ quickAddAction: action }),
 
@@ -184,6 +187,10 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
       _hydrated: true,
       _offline: false,
       _bootstrapRequired: false,
+    });
+    // 非同步取得目前登入使用者資訊
+    void authApi.getMe().then(user => {
+      if (user) useTaskStore.setState({ currentUser: user });
     });
   },
 

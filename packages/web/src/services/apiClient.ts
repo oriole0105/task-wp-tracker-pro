@@ -129,12 +129,50 @@ export const api = {
   },
 };
 
+export type { AuthUser, UserRole, AuditLogEntry } from '@tt/shared/types';
+
 type ApiErrorHandler = (message: string) => void;
 let _errorHandler: ApiErrorHandler | null = null;
 
 export function setApiErrorHandler(handler: ApiErrorHandler): void {
   _errorHandler = handler;
 }
+
+// ── Auth API ──────────────────────────────────────────────────────────────────
+
+import type { AuthUser, UserRole } from '@tt/shared/types';
+
+type ApiOk<T> = { ok: true; data: T };
+
+export const authApi = {
+  async getMe(): Promise<AuthUser | null> {
+    try {
+      const res = await api.get<ApiOk<AuthUser>>('/auth/me');
+      return res.ok ? res.data : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async listUsers(): Promise<AuthUser[]> {
+    const res = await api.get<ApiOk<AuthUser[]>>('/auth/users');
+    return res.ok ? res.data : [];
+  },
+
+  async createUser(data: { name: string; email?: string; role: UserRole }): Promise<{ user: AuthUser; token: string }> {
+    return api.post<{ user: AuthUser; token: string }>('/auth/users', data);
+  },
+
+  async updateUser(id: string, data: { name?: string; email?: string; role?: UserRole; isActive?: boolean }): Promise<AuthUser | null> {
+    const res = await api.patch<ApiOk<AuthUser | null>>(`/auth/users/${id}`, data);
+    return res.ok ? res.data : null;
+  },
+
+  async rotateToken(id: string): Promise<string> {
+    const res = await api.post<ApiOk<{ token: string }>>(`/auth/users/${id}/rotate`);
+    return res.ok ? res.data.token : '';
+  },
+};
 
 /** Fire-and-forget sync: logs error and surfaces it via the registered handler. */
 export function fireSync(promise: Promise<unknown>): void {

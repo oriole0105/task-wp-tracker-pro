@@ -1,8 +1,14 @@
 import React from 'react';
 import { CategoryManager } from '../components/CategoryManager';
+import { UserManager } from '../components/UserManager';
 
 const SettingsPage: React.FC = () => {
-  return <CategoryManager />;
+  return (
+    <>
+      <UserManager />
+      <CategoryManager />
+    </>
+  );
 };
 
 export default SettingsPage;

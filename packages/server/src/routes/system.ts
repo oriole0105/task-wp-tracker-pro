@@ -48,8 +48,29 @@ app.post('/import-localstorage', async (c) => {
   return c.json({ ok: true, data: { tasks: state.tasks?.length ?? 0, timeslots: state.timeslots?.length ?? 0 } });
 });
 
-// GET /events — SSE stream
-app.get('/events', (c) => {
+// GET /events — SSE stream（雲端模式需 token 或 CF Access 驗證）
+app.get('/events', async (c, next) => {
+  if (process.env.TT_RUNTIME === 'cloudflare') {
+    const { getActiveStore } = await import('../store/fileStore.js');
+    const { D1Store, hashToken } = await import('../store/d1Store.js');
+    const store = getActiveStore();
+    const d1 = store instanceof D1Store ? store : null;
+    const cfEmail = c.req.header('Cf-Access-Authenticated-User-Email');
+    if (d1 && cfEmail) {
+      const user = await d1.getUserByEmail(cfEmail);
+      if (!user || !user.is_active) {
+        return c.json({ ok: false, error: { code: 'UNAUTHORIZED' } }, 401);
+      }
+    } else {
+      const rawToken = c.req.query('token') ?? c.req.header('Authorization')?.replace('Bearer ', '');
+      if (!rawToken || !d1) return c.json({ ok: false, error: { code: 'UNAUTHORIZED' } }, 401);
+      const hash = await hashToken(rawToken);
+      const user = await d1.getUserByTokenHash(hash);
+      if (!user || !user.is_active) return c.json({ ok: false, error: { code: 'UNAUTHORIZED' } }, 401);
+    }
+  }
+  return next();
+}, (c) => {
   return streamSSE(c, async (stream) => {
     const unsub = subscribeToEvents(async (event) => {
       try {
@@ -64,5 +85,6 @@ app.get('/events', (c) => {
     });
   });
 });
+
 
 export default app;

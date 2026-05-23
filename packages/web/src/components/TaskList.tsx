@@ -53,7 +53,12 @@ interface IndexedTask extends Task {
   hasChildren: boolean;
 }
 
-export const TaskList: React.FC = () => {
+interface TaskListProps {
+  workspaceFilter?: 'shared' | 'personal';
+  currentUserId?: string;
+}
+
+export const TaskList: React.FC<TaskListProps> = ({ workspaceFilter, currentUserId }) => {
   const { tasks, timeslots, mainCategories, deleteTask, duplicateTask, duplicateSubtree, archiveTask, archiveAllDone, undo, reorderTask, importTasksFromJson, updateTask, quickAddAction, setQuickAddAction, preventDuplicateTaskNames } = useTaskStore();
 
   const [filterStatus, setFilterStatus] = useState<TaskStatus[]>(['BACKLOG', 'TODO', 'IN_PROGRESS', 'PAUSED']);
@@ -203,6 +208,12 @@ export const TaskList: React.FC = () => {
 
     const baseFiltered = tasks.filter(task => {
       if (task.archived) return false;
+      // workspace 過濾（只在有 currentUserId 時生效）
+      if (workspaceFilter && currentUserId) {
+        const ws = task.workspace ?? 'shared';
+        if (workspaceFilter === 'shared' && ws !== 'shared') return false;
+        if (workspaceFilter === 'personal' && ws !== currentUserId) return false;
+      }
       if (q) {
         const matchTitle = task.title.toLowerCase().includes(q);
         const matchAlias = (task.aliasTitle || '').toLowerCase().includes(q);

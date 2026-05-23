@@ -17,6 +17,7 @@ export interface Env {
 };
 
 let _store: D1Store | null = null;
+let _adminEnsured = false;
 const app = createApp();
 
 export default {
@@ -26,9 +27,16 @@ export default {
       _store = new D1Store(env.DB, env.TT_TOKEN);
       initStore(_store);
       resetTokenCache();
+      _adminEnsured = false;
     }
     // 每次 request 都 reload（確保多 Worker instance 間資料一致）
     await loadData();
+
+    // 確保 admin user 存在（首次部署時從 TT_TOKEN 建立）
+    if (!_adminEnsured) {
+      await _store.ensureAdminUser(env.TT_TOKEN);
+      _adminEnsured = true;
+    }
 
     // MCP over HTTP — handle before passing to Hono to avoid circular routing
     const url = new URL(request.url);

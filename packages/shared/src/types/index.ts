@@ -96,6 +96,7 @@ export interface Task {
   timelineEntries?: TaskTimelineEntry[];
   archived?: boolean;
   archivedAt?: number;
+  workspace?: 'shared' | string; // 'shared' 或 user.id（個人工作區）；省略等同 'shared'
   createdAt?: number;   // epoch ms，用於跨裝置智慧合併
   updatedAt?: number;   // epoch ms，用於跨裝置智慧合併
 }
@@ -136,4 +137,27 @@ export interface TaskTimelineEntry {
 export interface CategoryData {
   mainCategories: string[];
   subCategories: string[];
+}
+
+export type UserRole = 'admin' | 'member' | 'readonly';
+
+export interface AuthUser {
+  id: string;
+  email: string | null;
+  name: string;
+  role: UserRole;
+  tokenPrefix: string;
+  lastUsedAt: string | null;
+  isActive: boolean;
+}
+
+export interface AuditLogEntry {
+  id?: number;
+  userId: string | null;
+  userName: string | null;
+  action: string;
+  resource: string;
+  resourceId?: string | null;
+  metadata?: string | null;
+  createdAt: string;
 }

@@ -90,6 +90,10 @@ export function dataFileExists(): boolean {
   return store().dataExists();
 }
 
+export function getActiveStore(): IStore | null {
+  return _store;
+}
+
 export async function importBootstrap(rawState: Partial<AppData>): Promise<void> {
   return store().importBootstrap(rawState);
 }

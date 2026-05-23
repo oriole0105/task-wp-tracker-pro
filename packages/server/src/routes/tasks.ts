@@ -4,10 +4,20 @@ import { z } from 'zod';
 import { getData, saveData } from '../store/fileStore.js';
 import { emitEvent } from '../store/events.js';
 import * as svc from '../services/taskService.js';
-import type { Task, WeeklySnapshot, WorkOutput, JsonImportTask } from '@tt/shared/types';
+import type { Task, WeeklySnapshot, WorkOutput, JsonImportTask, AuthUser } from '@tt/shared/types';
 import { computeTaskWbsMap } from '@tt/shared/utils/wbs';
 
 const app = new Hono();
+
+// 依 workspace 過濾：personal task 只有 owner 可見
+function filterByWorkspace(tasks: Task[], user: AuthUser | undefined): Task[] {
+  if (!user || user.id === 'local-admin') return tasks; // 本機模式全部可見
+  return tasks.filter(t => {
+    const ws = t.workspace ?? 'shared';
+    if (ws === 'shared') return true;
+    return ws === user.id; // personal
+  });
+}
 
 const ok = <T>(data: T) => ({ ok: true as const, data });
 const notFound = (msg = 'Not found') => ({ ok: false as const, error: { code: 'NOT_FOUND', message: msg } });
@@ -16,6 +26,7 @@ const notFound = (msg = 'Not found') => ({ ok: false as const, error: { code: 'N
 app.get('/', (c) => {
   const { archived, parentId } = c.req.query() as { archived?: string; parentId?: string };
   let tasks = getData().tasks;
+  tasks = filterByWorkspace(tasks, c.get('user'));
   if (archived !== undefined) tasks = tasks.filter(t => !!t.archived === (archived === 'true'));
   if (parentId !== undefined) tasks = tasks.filter(t => (t.parentId ?? '') === parentId);
   return c.json(ok(tasks));
@@ -26,7 +37,8 @@ app.get('/', (c) => {
 app.get('/wbs-map', (c) => {
   const { limit: limitStr } = c.req.query() as { limit?: string };
   const limit = limitStr ? parseInt(limitStr, 10) : undefined;
-  const tasks = getData().tasks.filter(t => !t.archived);
+  let tasks = getData().tasks.filter(t => !t.archived);
+  tasks = filterByWorkspace(tasks, c.get('user'));
   const { wbsNumbers, sorted } = computeTaskWbsMap(tasks);
   const all = sorted.map(t => ({ ...t, wbsNumber: wbsNumbers.get(t.id) ?? '' }));
   const data = limit && limit > 0 ? all.slice(0, limit) : all;
@@ -38,6 +50,7 @@ app.get('/search', (c) => {
   const { q = '', archived } = c.req.query() as { q?: string; archived?: string };
   const lower = q.toLowerCase();
   let tasks = getData().tasks;
+  tasks = filterByWorkspace(tasks, c.get('user'));
   if (archived !== undefined) tasks = tasks.filter(t => !!t.archived === (archived === 'true'));
   else tasks = tasks.filter(t => !t.archived);
   const matched = tasks.filter(t =>
@@ -45,7 +58,7 @@ app.get('/search', (c) => {
     (t.aliasTitle ?? '').toLowerCase().includes(lower)
   );
   if (!archived || archived === 'false') {
-    const allActive = getData().tasks.filter(t => !t.archived);
+    const allActive = filterByWorkspace(getData().tasks.filter(t => !t.archived), c.get('user'));
     const { wbsNumbers } = computeTaskWbsMap(allActive);
     return c.json(ok(matched.map(t => ({ ...t, wbsNumber: wbsNumbers.get(t.id) ?? '' }))));
   }
