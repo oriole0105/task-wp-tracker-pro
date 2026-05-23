@@ -27,6 +27,7 @@ export interface Timeslot {
   taskId?: string;      // 可選，無連結 = 未分類
   subCategory: string;  // 時間分類（從 Task 移至此）
   note?: string;
+  ownerId?: string;     // 雲端多人模式：記錄者的 user.id；省略 = 不限制（本機/舊資料）
   createdAt?: number;   // epoch ms，用於跨裝置智慧合併
   updatedAt?: number;   // epoch ms，用於跨裝置智慧合併
 }
@@ -124,6 +125,7 @@ export interface TodoItem {
   done: boolean;
   startDate: string;   // 'yyyy-MM-dd'
   doneDate?: string;    // 'yyyy-MM-dd'
+  ownerId?: string;    // 雲端多人模式：建立者的 user.id；省略 = 不限制（本機/舊資料）
   createdAt?: number;
   updatedAt?: number;
 }

@@ -173,7 +173,8 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
   setQuickAddAction: (action) => set({ quickAddAction: action }),
 
   _hydrate: (serverData) => {
-    set({
+    const isCloud = !!(import.meta.env.VITE_API_BASE as string | undefined);
+    set(state => ({
       tasks: serverData.tasks ?? [],
       timeslots: serverData.timeslots ?? [],
       todos: serverData.todos ?? [],
@@ -182,12 +183,13 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
       outputTypes: serverData.outputTypes ?? DEFAULT_OUTPUT_TYPES,
       holidays: serverData.holidays ?? [],
       members: serverData.members ?? [{ id: 'self', name: '', isSelf: true }],
-      darkMode: serverData.settings?.darkMode ?? false,
+      // 雲端多人模式：UI 偏好以 localStorage 為準，不讓伺服器覆蓋
+      darkMode: isCloud ? state.darkMode : (serverData.settings?.darkMode ?? false),
       preventDuplicateTaskNames: serverData.settings?.preventDuplicateTaskNames ?? true,
       _hydrated: true,
       _offline: false,
       _bootstrapRequired: false,
-    });
+    }));
     // 非同步取得目前登入使用者資訊
     void authApi.getMe().then(user => {
       if (user) useTaskStore.setState({ currentUser: user });

@@ -325,13 +325,14 @@ export function deleteTimeslot(data: AppData, id: string): AppData {
 
 // ── Todo operations ───────────────────────────────────────────────
 
-export function addTodo(data: AppData, description: string, id?: string): { data: AppData; todo: TodoItem } {
+export function addTodo(data: AppData, description: string, id?: string, ownerId?: string): { data: AppData; todo: TodoItem } {
   const now = Date.now();
   const todo: TodoItem = {
     id: id ?? randomUUID(),
     description,
     done: false,
     startDate: format(new Date(), 'yyyy-MM-dd'),
+    ...(ownerId ? { ownerId } : {}),
     createdAt: now,
     updatedAt: now,
   };
