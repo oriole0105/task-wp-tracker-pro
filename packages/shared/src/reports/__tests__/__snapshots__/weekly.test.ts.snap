@@ -1,0 +1,126 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildFullReportAdoc > generates stable bimonthly report AsciiDoc 1`] = `
+"= 雙月盤點報告 | 2026-03-17
+
+== WBS
+
+[plantuml]
+----
+@startwbs
+* 專案工作任務
+** Development
+*** Platform migration
+****[#lightblue] Write unit tests
+@endwbs
+----
+
+== 甘特圖
+
+[plantuml]
+----
+@startgantt
+printscale daily zoom 1
+Project starts 2026-03-01
+saturday are colored in lightblue
+sunday are colored in lightblue
+
+[Platform migration] starts 2026-03-16 and ends 2026-03-20
+[Platform migration] is 40% completed
+[Platform migration] is colored in deepskyblue
+[Write unit tests] starts 2026-03-16 and ends 2026-03-20
+[Write unit tests] is 0% completed
+
+@endgantt
+----
+
+== 進度追蹤（有進展）
+
+_前期：2025-11-01～2025-12-31　→　本期：2026-01-01～2026-02-28_
+
+[cols="13,5,4,4,5,8,5,12",options="header"]
+|===
+|任務 / 工作產出 |預期完成日 |前期% |本期% |期間△ |時程績效 SPI |狀態 |說明
+
+|===
+
+== 期間工作成果彙總
+
+_工作成果區間：2026-01-01 ～ 2026-02-28_
+
+=== 任務狀態統計
+
+合計：0
+
+=== 期間實際工時彙總
+
+此期間無工時紀錄
+
+=== 工作產出清單
+
+此期間無標記 effectiveDate 的工作產出
+"
+`;
+
+exports[`buildFullReportAdoc > generates stable weekly report AsciiDoc 1`] = `
+"= 工作週報 | 2026-03-17
+
+== WBS
+
+[plantuml]
+----
+@startwbs
+* 專案工作任務
+** Development
+*** Platform migration
+****[#lightblue] Write unit tests
+@endwbs
+----
+
+== 甘特圖
+
+[plantuml]
+----
+@startgantt
+printscale daily zoom 1
+Project starts 2026-04-23
+saturday are colored in lightblue
+sunday are colored in lightblue
+
+
+@endgantt
+----
+
+== 進度追蹤（有進展）
+
+_上週：2026-03-09～2026-03-13　→　本週：2026-03-16～2026-03-20_
+
+[cols="13,5,4,4,5,8,5,12",options="header"]
+|===
+|任務 / 工作產出 |預期完成日 |上週% |本週% |週間△ |時程績效 SPI |狀態 |說明
+
+|*Platform migration* +
+（Development）
+|2026-03-27
+|—
+|40% (目前) [信]
+|—
+|[red]#SPI 0.40 嚴重落後# +
+[red]#計畫進度 100%#
+|[blue]#進行中#
+|—
+
+|*Write unit tests* +
+（Development）
+|2026-03-20
+|—
+|0% (目前) [信]
+|—
+|[red]#SPI 0.00 嚴重落後# +
+[red]#計畫進度 100%#
+|待執行
+|—
+
+|===
+"
+`;

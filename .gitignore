@@ -39,9 +39,6 @@ dist-ssr
 USER_MANUAL_modify.md
 e2e-report-test.mjs
 
-# Test files (local development only)
-packages/*/vitest.config.ts
-packages/**/__tests__/
 
 # Wrangler local cache
 .wrangler/
