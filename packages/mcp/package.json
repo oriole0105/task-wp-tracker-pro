@@ -4,6 +4,14 @@
   "version": "2.1.0",
   "type": "module",
   "engines": { "node": ">=20.0.0" },
+  "exports": {
+    "./client": "./src/client.ts",
+    "./tools/tasks": "./src/tools/taskTools.ts",
+    "./tools/timeslots": "./src/tools/timeslotTools.ts",
+    "./tools/todos": "./src/tools/todoTools.ts",
+    "./tools/reports": "./src/tools/reportTools.ts",
+    "./tools/data": "./src/tools/dataTools.ts"
+  },
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc --noEmit",

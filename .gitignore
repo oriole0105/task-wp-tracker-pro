@@ -22,3 +22,27 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Claude Code project config (local only)
+.claude/
+
+# Archive and staging files
+*.zip
+*.tar.gz
+*.tgz
+
+# Temporary dated working directories (e.g. 20260518_windows/)
+[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_*/
+
+# Local-only working notes and drafts (not for sharing)
+20260502_trask-time-tracker_issuelist.md
+USER_MANUAL_modify.md
+e2e-report-test.mjs
+
+# Test files (local development only)
+packages/*/vitest.config.ts
+packages/**/__tests__/
+
+# Wrangler local cache
+.wrangler/
+packages/**/.wrangler/

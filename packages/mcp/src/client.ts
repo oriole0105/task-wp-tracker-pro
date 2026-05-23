@@ -1,12 +1,21 @@
 type Params = Record<string, string | number | boolean | undefined>;
+type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+export interface ApiClientOptions {
+  base?: string;
+  token?: string;
+  fetcher?: FetchFn;
+}
 
 export class ApiClient {
   private readonly base: string;
   private readonly token: string;
+  private readonly fetcher: FetchFn;
 
-  constructor() {
-    this.base = (process.env.TT_API_URL ?? 'http://127.0.0.1:5174').replace(/\/$/, '');
-    this.token = process.env.TT_TOKEN ?? '';
+  constructor(options?: ApiClientOptions) {
+    this.base = (options?.base ?? process.env.TT_API_URL ?? 'http://127.0.0.1:5174').replace(/\/$/, '');
+    this.token = options?.token ?? process.env.TT_TOKEN ?? '';
+    this.fetcher = options?.fetcher ?? globalThis.fetch.bind(globalThis);
   }
 
   private headers(): Record<string, string> {
@@ -26,40 +35,40 @@ export class ApiClient {
     return u.toString();
   }
 
-  async get(path: string, params?: Params): Promise<unknown> {
-    const res = await fetch(this.url(path, params), { headers: this.headers() });
-    return res.json();
+  async get<T = unknown>(path: string, params?: Params): Promise<T> {
+    const res = await this.fetcher(this.url(path, params), { headers: this.headers() });
+    return res.json() as Promise<T>;
   }
 
   async getText(path: string, params?: Params): Promise<string> {
-    const res = await fetch(this.url(path, params), { headers: this.headers() });
+    const res = await this.fetcher(this.url(path, params), { headers: this.headers() });
     return res.text();
   }
 
-  async post(path: string, body?: unknown): Promise<unknown> {
-    const res = await fetch(this.url(path), {
+  async post<T = unknown>(path: string, body?: unknown): Promise<T> {
+    const res = await this.fetcher(this.url(path), {
       method: 'POST',
       headers: this.headers(),
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
-    return res.json();
+    return res.json() as Promise<T>;
   }
 
-  async patch(path: string, body: unknown): Promise<unknown> {
-    const res = await fetch(this.url(path), {
+  async patch<T = unknown>(path: string, body: unknown): Promise<T> {
+    const res = await this.fetcher(this.url(path), {
       method: 'PATCH',
       headers: this.headers(),
       body: JSON.stringify(body),
     });
-    return res.json();
+    return res.json() as Promise<T>;
   }
 
-  async delete(path: string): Promise<unknown> {
-    const res = await fetch(this.url(path), {
+  async delete<T = unknown>(path: string): Promise<T> {
+    const res = await this.fetcher(this.url(path), {
       method: 'DELETE',
       headers: this.headers(),
     });
-    return res.json();
+    return res.json() as Promise<T>;
   }
 }
 

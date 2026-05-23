@@ -170,9 +170,31 @@ allowOrigin: 'https://task-time-tracker-web.pages.dev',
 
 ## MCP Server（AI 操作）
 
-MCP server 維持在本機執行，只需改兩個環境變數指向雲端 API：
+雲端部署後支援兩種 MCP 連線方式：
+
+### 方式 A：MCP over HTTP（推薦，無需本機 server）
+
+Workers 提供 `/mcp` HTTP 端點，可直接從 Claude Code 連接，不需要在本機運行任何 server。
 
 找到你的 Claude MCP 設定檔（`~/.claude/settings.json` 或 `~/.config/claude/settings.json`）：
+
+```json
+{
+  "mcpServers": {
+    "task-time-tracker": {
+      "type": "http",
+      "url": "https://task-time-tracker.your-name.workers.dev/mcp",
+      "headers": {
+        "Authorization": "Bearer your-token-here"
+      }
+    }
+  }
+}
+```
+
+### 方式 B：stdio（本機 MCP server 指向雲端 API）
+
+若偏好 stdio 模式，MCP server 在本機執行，只需改兩個環境變數指向雲端 API：
 
 ```json
 {
