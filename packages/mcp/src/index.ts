@@ -1,12 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { ApiClient } from './client.js';
-import { registerTaskTools } from './tools/taskTools.js';
-import { registerTimeslotTools } from './tools/timeslotTools.js';
-import { registerTodoTools } from './tools/todoTools.js';
-import { registerReportTools } from './tools/reportTools.js';
-import { registerDataTools } from './tools/dataTools.js';
-import { registerSettingsTools } from './tools/settingsTools.js';
+import { registerAllTools } from './tools/index.js';
 
 const server = new McpServer({
   name: 'task-time-tracker',
@@ -15,12 +10,7 @@ const server = new McpServer({
 
 const api = new ApiClient();
 
-registerTaskTools(server, api);
-registerTimeslotTools(server, api);
-registerTodoTools(server, api);
-registerReportTools(server, api);
-registerDataTools(server, api);
-registerSettingsTools(server, api);
+registerAllTools(server, api);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

@@ -1,12 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { ApiClient } from '@tt/mcp/client';
-import { registerTaskTools } from '@tt/mcp/tools/tasks';
-import { registerTimeslotTools } from '@tt/mcp/tools/timeslots';
-import { registerTodoTools } from '@tt/mcp/tools/todos';
-import { registerReportTools } from '@tt/mcp/tools/reports';
-import { registerDataTools } from '@tt/mcp/tools/data';
-import { registerSettingsTools } from '@tt/mcp/tools/settings';
+import { registerAllTools } from '@tt/mcp/tools';
 import type { Hono } from 'hono';
 
 export interface McpHandlerEnv {
@@ -51,12 +46,7 @@ export async function handleMcpRequest(
     fetcher: internalFetch,
   });
 
-  registerTaskTools(server, api);
-  registerTimeslotTools(server, api);
-  registerTodoTools(server, api);
-  registerReportTools(server, api);
-  registerDataTools(server, api);
-  registerSettingsTools(server, api);
+  registerAllTools(server, api);
 
   await server.connect(transport);
   return transport.handleRequest(request);

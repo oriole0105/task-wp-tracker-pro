@@ -24,10 +24,11 @@ const STATUS_LABELS: Record<string, string> = {
 export const Layout: React.FC = () => {
   const {
     darkMode, toggleDarkMode, undo, _history, _lastAutoStatusChange, clearLastAutoStatusChange,
-    _hydrated, _offline, _bootstrapRequired,
+    _hydrated, _offline, _bootstrapRequired, _lastApiError, clearLastApiError,
   } = useTaskStore();
   const canUndo = _history.length > 0;
   const [toastMsg, setToastMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -42,6 +43,13 @@ export const Layout: React.FC = () => {
       clearLastAutoStatusChange();
     }
   }, [_lastAutoStatusChange, clearLastAutoStatusChange]);
+
+  useEffect(() => {
+    if (_lastApiError) {
+      setErrorMsg(_lastApiError);
+      clearLastApiError();
+    }
+  }, [_lastApiError, clearLastApiError]);
 
   const isLoading = !_hydrated && !_offline && !_bootstrapRequired;
 
@@ -163,6 +171,18 @@ export const Layout: React.FC = () => {
         sx={isMobile ? { bottom: 72 } : undefined}
       >
         <Alert severity="info" variant="filled" onClose={() => setToastMsg('')}>{toastMsg}</Alert>
+      </Snackbar>
+
+      <Snackbar
+        open={!!errorMsg}
+        autoHideDuration={6000}
+        onClose={() => setErrorMsg('')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        sx={isMobile ? { bottom: 72 } : undefined}
+      >
+        <Alert severity="error" variant="filled" onClose={() => setErrorMsg('')}>
+          同步失敗：{errorMsg}
+        </Alert>
       </Snackbar>
     </Box>
   );

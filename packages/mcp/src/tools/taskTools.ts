@@ -8,16 +8,17 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
 
   server.tool(
     'task_list',
-    '列出任務清單。不傳任何參數時回傳所有未封存任務，每筆附帶 wbsNumber 欄位並依 WBS 階層順序排列，方便後續用 task_find_by_wbs 操作。指定 parentId 時回傳該任務的直接子任務（不含 WBS 編號）。',
+    '列出任務清單。不傳任何參數時回傳所有未封存任務，每筆附帶 wbsNumber 欄位並依 WBS 階層順序排列，方便後續用 task_find_by_wbs 操作。指定 parentId 時回傳該任務的直接子任務（不含 WBS 編號）。回傳格式含 total 欄位（任務總筆數）。',
     {
       archived: z.boolean().optional().describe('true=只看封存任務；省略=只看未封存（附 WBS 編號）'),
       parentId: z.string().optional().describe('只回傳此父任務的直接子任務'),
+      limit: z.number().int().positive().optional().describe('最多回傳幾筆（預設不限制）；可先用 limit:10 快速預覽，再視需要加大'),
     },
-    async ({ archived, parentId }) => {
+    async ({ archived, parentId, limit }) => {
       try {
         // 未指定篩選條件時呼叫 wbs-map，回傳含 WBS 編號的排序清單
         if (archived === undefined && parentId === undefined) {
-          const result = await api.get('/tasks/wbs-map');
+          const result = await api.get('/tasks/wbs-map', limit !== undefined ? { limit } : undefined);
           return json(result);
         }
         const result = await api.get('/tasks', { archived, parentId });

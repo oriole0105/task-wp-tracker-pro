@@ -11,7 +11,8 @@
     "./tools/todos": "./src/tools/todoTools.ts",
     "./tools/reports": "./src/tools/reportTools.ts",
     "./tools/data": "./src/tools/dataTools.ts",
-    "./tools/settings": "./src/tools/settingsTools.ts"
+    "./tools/settings": "./src/tools/settingsTools.ts",
+    "./tools": "./src/tools/index.ts"
   },
   "scripts": {
     "dev": "tsx src/index.ts",

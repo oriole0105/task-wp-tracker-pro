@@ -129,9 +129,18 @@ export const api = {
   },
 };
 
-/** Fire-and-forget sync: logs error, does not throw. */
+type ApiErrorHandler = (message: string) => void;
+let _errorHandler: ApiErrorHandler | null = null;
+
+export function setApiErrorHandler(handler: ApiErrorHandler): void {
+  _errorHandler = handler;
+}
+
+/** Fire-and-forget sync: logs error and surfaces it via the registered handler. */
 export function fireSync(promise: Promise<unknown>): void {
   promise.catch(err => {
-    console.warn('[api-sync]', err instanceof Error ? err.message : err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[api-sync]', msg);
+    _errorHandler?.(msg);
   });
 }

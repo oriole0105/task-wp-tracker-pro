@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { format, startOfWeek } from 'date-fns';
 import type { Task, CategoryData, WorkOutput, Timeslot, OutputType, WeeklySnapshot, Member, JsonImportTask, TodoItem } from '@tt/shared/types';
 import { getAllDescendantIds, propagateStatusToAncestors, type StatusChangeInfo } from '@tt/shared/utils/taskHierarchy';
-import { api, fireSync } from '../services/apiClient';
+import { api, fireSync, setApiErrorHandler } from '../services/apiClient';
 
 const getCurrentWeekStart = (): string =>
   format(startOfWeek(new Date(), { weekStartsOn: 0 }), 'yyyy-MM-dd');
@@ -131,6 +131,9 @@ interface TaskState {
   _lastAutoStatusChange: StatusChangeInfo | null;
   clearLastAutoStatusChange: () => void;
 
+  _lastApiError: string | null;
+  clearLastApiError: () => void;
+
   mergeImport: (data: { tasks?: Task[], timeslots?: Timeslot[] }) => { tasksAdded: number; tasksUpdated: number; timeslotsAdded: number; timeslotsUpdated: number };
 
   // Todo Actions
@@ -162,6 +165,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
   _offline: false,
   _bootstrapRequired: false,
   _lastAutoStatusChange: null,
+  _lastApiError: null,
 
   setQuickAddAction: (action) => set({ quickAddAction: action }),
 
@@ -733,7 +737,10 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
   },
 
   clearLastAutoStatusChange: () => set({ _lastAutoStatusChange: null }),
+  clearLastApiError: () => set({ _lastApiError: null }),
 
   getTaskById: (id) => get().tasks.find((t) => t.id === id),
   getSubTasks: (parentId) => get().tasks.filter((t) => t.parentId === parentId),
 }));
+
+setApiErrorHandler((msg) => useTaskStore.setState({ _lastApiError: msg }));

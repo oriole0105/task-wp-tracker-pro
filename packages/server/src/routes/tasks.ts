@@ -22,11 +22,15 @@ app.get('/', (c) => {
 });
 
 // GET /tasks/wbs-map — 回傳未封存任務清單，每筆附帶 wbsNumber 欄位，依 WBS 順序排列
+// Query: limit (optional) — 最多回傳幾筆；回傳格式加上 total 欄位
 app.get('/wbs-map', (c) => {
+  const { limit: limitStr } = c.req.query() as { limit?: string };
+  const limit = limitStr ? parseInt(limitStr, 10) : undefined;
   const tasks = getData().tasks.filter(t => !t.archived);
   const { wbsNumbers, sorted } = computeTaskWbsMap(tasks);
-  const result = sorted.map(t => ({ ...t, wbsNumber: wbsNumbers.get(t.id) ?? '' }));
-  return c.json(ok(result));
+  const all = sorted.map(t => ({ ...t, wbsNumber: wbsNumbers.get(t.id) ?? '' }));
+  const data = limit && limit > 0 ? all.slice(0, limit) : all;
+  return c.json({ ok: true, data, total: all.length });
 });
 
 // GET /tasks/search?q=&archived=
