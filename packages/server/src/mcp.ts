@@ -6,6 +6,7 @@ import { registerTimeslotTools } from '@tt/mcp/tools/timeslots';
 import { registerTodoTools } from '@tt/mcp/tools/todos';
 import { registerReportTools } from '@tt/mcp/tools/reports';
 import { registerDataTools } from '@tt/mcp/tools/data';
+import { registerSettingsTools } from '@tt/mcp/tools/settings';
 import type { Hono } from 'hono';
 
 export interface McpHandlerEnv {
@@ -55,6 +56,7 @@ export async function handleMcpRequest(
   registerTodoTools(server, api);
   registerReportTools(server, api);
   registerDataTools(server, api);
+  registerSettingsTools(server, api);
 
   await server.connect(transport);
   return transport.handleRequest(request);

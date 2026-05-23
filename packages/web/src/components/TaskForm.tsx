@@ -2,33 +2,22 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, FormControl, InputLabel, Select, MenuItem,
-  Grid, Box, Typography, IconButton, Paper, Divider, Chip,
-  FormControlLabel, Checkbox, Collapse, Tooltip, Radio, RadioGroup, FormLabel,
+  Grid, Box, Typography, IconButton, Paper, Chip, Divider,
+  FormControlLabel, Checkbox, Collapse, Radio, RadioGroup, FormLabel,
   ToggleButton, ToggleButtonGroup, useTheme, useMediaQuery, AppBar, Toolbar,
 } from '@mui/material';
 import Autocomplete from '@mui/material/Autocomplete';
-import { Add, Delete, ContentCopy, Link as LinkIcon, Label as LabelIcon, AccountTree, InfoOutlined, ExpandMore, ExpandLess, Close } from '@mui/icons-material';
+import { Add, Delete, Label as LabelIcon, AccountTree, InfoOutlined, ExpandMore, ExpandLess, Close } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { format, startOfWeek, addDays, parseISO } from 'date-fns';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, Legend, ResponsiveContainer } from 'recharts';
+import { format } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
-import type { Task, TaskStatus, WorkOutput, WeeklySnapshot, Milestone, TaskTimelineEntry } from '@tt/shared/types';
+import type { Task, TaskStatus, WorkOutput, Milestone, TaskTimelineEntry } from '@tt/shared/types';
 import { useTaskStore } from '../store/useTaskStore';
 import { getTaskActualStart, getTaskActualEnd } from '@tt/shared/utils/taskDateUtils';
 import { computeTaskWbsMap } from '@tt/shared/utils/wbs';
-
-const CHART_COLORS = ['#1976d2', '#e91e63', '#4caf50', '#ff9800', '#9c27b0', '#00bcd4', '#795548'];
-
-const MILESTONE_COLORS: { value: string; label: string; css: string }[] = [
-  { value: 'Red',        label: '紅',  css: '#f44336' },
-  { value: 'Orange',     label: '橙',  css: '#ff9800' },
-  { value: 'Gold',       label: '金',  css: '#ffc107' },
-  { value: 'LimeGreen',  label: '草綠', css: '#8bc34a' },
-  { value: 'DeepSkyBlue',label: '藍',  css: '#03a9f4' },
-  { value: 'Violet',     label: '紫',  css: '#9c27b0' },
-  { value: 'HotPink',    label: '粉',  css: '#e91e63' },
-  { value: 'Silver',     label: '灰',  css: '#9e9e9e' },
-];
+import { TaskMilestones } from './TaskMilestones';
+import { TaskOutputs } from './TaskOutputs';
+import { TaskSnapshotSection } from './TaskSnapshotSection';
 
 interface TaskFormProps {
   open: boolean;
@@ -40,7 +29,7 @@ interface TaskFormProps {
 export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, parentId }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const { tasks, timeslots, mainCategories, outputTypes, members, addTask, updateTask, updateTaskSnapshots, getTaskById } = useTaskStore();
+  const { tasks, timeslots, mainCategories, outputTypes, members, addTask, updateTask, getTaskById } = useTaskStore();
   const memberNames = members.map(m => m.name).filter(n => n.trim() !== '');
 
   const [title, setTitle] = useState('');
@@ -73,39 +62,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
   const [newTimelineContent, setNewTimelineContent] = useState('');
   const [showTimeline, setShowTimeline] = useState(false);
 
-  // --- Snapshot management state ---
   const [showAdvanced, setShowAdvanced] = useState(false);
-  // 任務快照：立即存 store，從 store reactive 讀（edit mode only）
-  const [showTaskSnapshots, setShowTaskSnapshots] = useState(false);
-  const [newSnapDate, setNewSnapDate] = useState<Date | null>(null);
-  const [newSnapValue, setNewSnapValue] = useState<number | ''>('');
-  // 產出快照：local state，隨儲存任務一起存
-  const [expandedOutputSnaps, setExpandedOutputSnaps] = useState<Set<string>>(new Set());
-  const [newOutputSnap, setNewOutputSnap] = useState<Record<string, { date: Date | null; value: number | '' }>>({});
-
-  // 從 store 反應式讀取任務快照（edit mode only）
-  const currentTaskSnapshots = useMemo((): WeeklySnapshot[] => {
-    if (!initialData) return [];
-    return tasks.find(t => t.id === initialData.id)?.weeklySnapshots ?? [];
-  }, [tasks, initialData]);
-
-  // 完成度趨勢圖資料：task + 所有有快照的 output 各一條線
-  const completenessChartData = useMemo(() => {
-    const allDates = new Set<string>();
-    currentTaskSnapshots.forEach(s => allDates.add(s.weekStart));
-    outputs.forEach(o => (o.weeklySnapshots ?? []).forEach(s => allDates.add(s.weekStart)));
-    if (allDates.size === 0) return [];
-    return Array.from(allDates).sort().map(date => {
-      const point: Record<string, string | number | undefined> = { date: date.slice(5) }; // MM-DD
-      const taskSnap = currentTaskSnapshots.find(s => s.weekStart === date);
-      if (taskSnap !== undefined) point['task'] = taskSnap.completeness;
-      outputs.forEach(o => {
-        const snap = (o.weeklySnapshots ?? []).find(s => s.weekStart === date);
-        if (snap !== undefined) point[o.id] = snap.completeness;
-      });
-      return point;
-    });
-  }, [currentTaskSnapshots, outputs]);
 
   // Helper to get all descendants of a task to prevent circular references
   const getDescendantIds = (taskId: string): string[] => {
@@ -215,12 +172,6 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
     setNewLabel('');
     setDateError(false);
     setPauseReasonError(false);
-    // Reset snapshot UI state
-    setShowTaskSnapshots(false);
-    setNewSnapDate(null);
-    setNewSnapValue('');
-    setExpandedOutputSnaps(new Set());
-    setNewOutputSnap({});
     // Reset timeline UI state
     setNewTimelineDate(format(new Date(), 'yyyy-MM-dd'));
     setNewTimelineContent('');
@@ -246,103 +197,6 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
 
   const handleDeleteLabel = (labelToDelete: string) => {
     setLabels(labels.filter(l => l !== labelToDelete));
-  };
-
-  // --- Milestone handlers ---
-  const handleAddMilestone = () => {
-    setMilestones(prev => [...prev, {
-      id: uuidv4(),
-      title: '',
-      date: format(new Date(), 'yyyy-MM-dd'),
-      showInGantt: true,
-    }]);
-  };
-
-  const handleUpdateMilestone = (id: string, updates: Partial<Omit<Milestone, 'id'>>) => {
-    setMilestones(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
-  };
-
-  const handleDeleteMilestone = (id: string) => {
-    setMilestones(prev => prev.filter(m => m.id !== id));
-  };
-
-  // --- Output handlers ---
-  const getOutputTypeMeta = (outputTypeId: string | undefined) =>
-    outputTypes.find(t => t.id === outputTypeId) ?? null;
-
-  const handleAddOutput = () => {
-    setOutputs([...outputs, { id: uuidv4(), name: '', outputTypeId: '', summary: '', link: '', completeness: '' }]);
-  };
-
-  const handleUpdateOutput = (id: string, field: keyof WorkOutput, value: string) => {
-    setOutputs(outputs.map(o => o.id === id ? { ...o, [field]: value } : o));
-  };
-
-  const handleDeleteOutput = (id: string) => {
-    setOutputs(outputs.filter(o => o.id !== id));
-  };
-
-  // 複製產出為下期：effectiveDate +7 天；若原本無日期則維持空白；完成度歸零
-  const handleCopyOutput = (id: string) => {
-    const src = outputs.find(o => o.id === id);
-    if (!src) return;
-    const nextEffectiveDate = src.effectiveDate
-      ? format(addDays(parseISO(src.effectiveDate), 7), 'yyyy-MM-dd')
-      : '';
-    const copy: typeof src = {
-      ...src,
-      id: uuidv4(),
-      completeness: '',
-      effectiveDate: nextEffectiveDate,
-      weeklySnapshots: [],
-    };
-    // 插入在原產出之後
-    const idx = outputs.findIndex(o => o.id === id);
-    const next = [...outputs];
-    next.splice(idx + 1, 0, copy);
-    setOutputs(next);
-  };
-
-  // 產出快照（local state）
-  const handleUpdateOutputSnapshots = (outputId: string, snapshots: WeeklySnapshot[]) => {
-    setOutputs(prev => prev.map(o => o.id === outputId ? { ...o, weeklySnapshots: snapshots } : o));
-  };
-
-  const handleAddOutputSnapshot = (outputId: string) => {
-    const s = newOutputSnap[outputId];
-    if (!s?.date || s.value === '') return;
-    const ws = format(startOfWeek(s.date, { weekStartsOn: 0 }), 'yyyy-MM-dd');
-    const existing = outputs.find(o => o.id === outputId)?.weeklySnapshots ?? [];
-    const idx = existing.findIndex(sn => sn.weekStart === ws);
-    const snap = { weekStart: ws, completeness: s.value as number };
-    const updated = idx >= 0 ? existing.map((sn, i) => i === idx ? snap : sn) : [...existing, snap];
-    handleUpdateOutputSnapshots(outputId, updated);
-    setNewOutputSnap(prev => ({ ...prev, [outputId]: { date: null, value: '' } }));
-  };
-
-  // --- 任務快照（立即存 store）---
-  const handleEditTaskSnapshot = (weekStart: string, completeness: number) => {
-    if (!initialData) return;
-    updateTaskSnapshots(initialData.id, currentTaskSnapshots.map(s =>
-      s.weekStart === weekStart ? { ...s, completeness } : s
-    ));
-  };
-
-  const handleDeleteTaskSnapshot = (weekStart: string) => {
-    if (!initialData) return;
-    updateTaskSnapshots(initialData.id, currentTaskSnapshots.filter(s => s.weekStart !== weekStart));
-  };
-
-  const handleAddTaskSnapshot = () => {
-    if (!initialData || !newSnapDate || newSnapValue === '') return;
-    const ws = format(startOfWeek(newSnapDate, { weekStartsOn: 0 }), 'yyyy-MM-dd');
-    const existing = currentTaskSnapshots;
-    const idx = existing.findIndex(s => s.weekStart === ws);
-    const snap = { weekStart: ws, completeness: newSnapValue as number };
-    const updated = idx >= 0 ? existing.map((s, i) => i === idx ? snap : s) : [...existing, snap];
-    updateTaskSnapshots(initialData.id, updated);
-    setNewSnapDate(null);
-    setNewSnapValue('');
   };
 
   const handleSubmit = () => {
@@ -386,14 +240,6 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
       addTask(taskData as any);
     }
     onClose();
-  };
-
-  const toggleOutputSnap = (outputId: string) => {
-    setExpandedOutputSnaps(prev => {
-      const next = new Set(prev);
-      next.has(outputId) ? next.delete(outputId) : next.add(outputId);
-      return next;
-    });
   };
 
   return (
@@ -690,220 +536,15 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
 
           {/* 任務完成度歷史快照（僅編輯模式，且追蹤完成度時顯示） */}
           {initialData && trackCompleteness && (
-            <Grid size={{ xs: 12 }}>
-              <Box
-                onClick={() => setShowTaskSnapshots(v => !v)}
-                sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 0.5, py: 0.5, userSelect: 'none' }}
-              >
-                {showTaskSnapshots ? <ExpandLess fontSize="small" color="primary" /> : <ExpandMore fontSize="small" color="primary" />}
-                <Typography variant="body2" color="primary">
-                  完成度歷史快照（{currentTaskSnapshots.length} 筆）
-                </Typography>
-                <Typography variant="caption" color="text.disabled" sx={{ ml: 0.5 }}>
-                  — 補填或修改過去各期的完成度紀錄
-                </Typography>
-              </Box>
-              <Collapse in={showTaskSnapshots}>
-                <Paper variant="outlined" sx={{ p: 1.5, mt: 0.5, bgcolor: 'action.hover' }}>
-                  {/* 現有快照列表（最新在上） */}
-                  {[...currentTaskSnapshots]
-                    .sort((a, b) => b.weekStart.localeCompare(a.weekStart))
-                    .map(snap => (
-                      <Box key={snap.weekStart} sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1 }}>
-                        <Typography variant="body2" sx={{ minWidth: 110, fontFamily: 'monospace', flexShrink: 0 }}>
-                          {snap.weekStart}
-                        </Typography>
-                        <TextField
-                          size="small"
-                          type="number"
-                          label="%"
-                          value={snap.completeness}
-                          inputProps={{ min: 0, max: 100, step: 5 }}
-                          sx={{ width: 80 }}
-                          onChange={(e) => {
-                            const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
-                            handleEditTaskSnapshot(snap.weekStart, val);
-                          }}
-                        />
-                        <IconButton size="small" color="error" onClick={() => handleDeleteTaskSnapshot(snap.weekStart)}>
-                          <Delete fontSize="small" />
-                        </IconButton>
-                      </Box>
-                    ))}
-                  {currentTaskSnapshots.length === 0 && (
-                    <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mb: 1 }}>
-                      尚無歷史快照
-                    </Typography>
-                  )}
-
-                  {/* 新增快照 */}
-                  <Divider sx={{ my: 1 }} />
-                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                    <DatePicker
-                      label="週次（任意日期）"
-                      value={newSnapDate}
-                      onChange={setNewSnapDate}
-                      slotProps={{ textField: { size: 'small', sx: { width: 180 } } }}
-                    />
-                    <TextField
-                      size="small"
-                      type="number"
-                      label="完成度 %"
-                      value={newSnapValue}
-                      inputProps={{ min: 0, max: 100, step: 5 }}
-                      sx={{ width: 100 }}
-                      onChange={(e) => {
-                        const val = e.target.value === '' ? '' : Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
-                        setNewSnapValue(val);
-                      }}
-                    />
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<Add />}
-                      onClick={handleAddTaskSnapshot}
-                      disabled={!newSnapDate || newSnapValue === ''}
-                      sx={{ mt: 0.5 }}
-                    >
-                      新增
-                    </Button>
-                  </Box>
-                  <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.5 }}>
-                    日期自動對齊至該週週日（weekStart）。同週已有快照時會覆蓋。
-                  </Typography>
-
-                  {/* 完成度趨勢圖 */}
-                  {completenessChartData.length > 0 && (
-                    <>
-                      <Divider sx={{ my: 1.5 }} />
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                        完成度趨勢（任務整體 + 各工作產出）
-                      </Typography>
-                      <ResponsiveContainer width="100%" height={200}>
-                        <LineChart data={completenessChartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.2)" />
-                          <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                          <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} unit="%" />
-                          <ChartTooltip formatter={(v: number | string | readonly (string | number)[] | undefined) => typeof v === 'number' ? `${v}%` : ''} />
-                          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                          {currentTaskSnapshots.length > 0 && (
-                            <Line
-                              type="monotone" dataKey="task" name="任務整體"
-                              stroke={CHART_COLORS[0]} strokeWidth={2} dot={{ r: 3 }} connectNulls
-                            />
-                          )}
-                          {outputs
-                            .filter(o => (o.weeklySnapshots ?? []).length > 0)
-                            .map((o, idx) => (
-                              <Line
-                                key={o.id} type="monotone" dataKey={o.id}
-                                name={o.name || `產出 ${idx + 1}`}
-                                stroke={CHART_COLORS[(idx + 1) % CHART_COLORS.length]}
-                                strokeWidth={1.5}
-                                strokeDasharray={idx % 2 !== 0 ? '4 2' : undefined}
-                                dot={{ r: 2 }} connectNulls
-                              />
-                            ))}
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </>
-                  )}
-                </Paper>
-              </Collapse>
-            </Grid>
+            <TaskSnapshotSection
+              key={initialData.id}
+              taskId={initialData.id}
+              outputs={outputs}
+            />
           )}
 
           {/* ── Milestone Section ── */}
-          <Grid size={{ xs: 12 }}>
-            <Divider sx={{ my: 2 }} />
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-              <Typography variant="h6">里程碑 (Milestones)</Typography>
-              <Button startIcon={<Add />} variant="outlined" size="small" onClick={handleAddMilestone}>新增里程碑</Button>
-            </Box>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-              {milestones.map((ms) => (
-                <Paper key={ms.id} variant="outlined" sx={{ p: 1.5, bgcolor: 'action.hover' }}>
-                  <Grid container spacing={1.5} alignItems="center">
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                      <TextField
-                        label="里程碑名稱"
-                        size="small"
-                        fullWidth
-                        value={ms.title}
-                        onChange={(e) => handleUpdateMilestone(ms.id, { title: e.target.value })}
-                      />
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 3 }}>
-                      <DatePicker
-                        label="日期"
-                        value={ms.date ? new Date(ms.date) : null}
-                        onChange={(d) => d && handleUpdateMilestone(ms.id, { date: format(d, 'yyyy-MM-dd') })}
-                        slotProps={{ textField: { size: 'small', fullWidth: true } }}
-                      />
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 3 }}>
-                      <FormControl fullWidth size="small">
-                        <InputLabel>顏色</InputLabel>
-                        <Select
-                          value={ms.color ?? ''}
-                          label="顏色"
-                          onChange={(e) => handleUpdateMilestone(ms.id, { color: e.target.value || undefined })}
-                          renderValue={(val) => {
-                            if (!val) return <em>預設</em>;
-                            const c = MILESTONE_COLORS.find(x => x.value === val);
-                            return (
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: c?.css ?? '#999', flexShrink: 0 }} />
-                                {c?.label ?? val}
-                              </Box>
-                            );
-                          }}
-                        >
-                          <MenuItem value=""><em>預設</em></MenuItem>
-                          {MILESTONE_COLORS.map(c => (
-                            <MenuItem key={c.value} value={c.value}>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: c.css, flexShrink: 0 }} />
-                                {c.label}
-                              </Box>
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                    <Grid size={{ xs: 'auto' }} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            size="small"
-                            checked={ms.showInGantt}
-                            onChange={(e) => handleUpdateMilestone(ms.id, { showInGantt: e.target.checked })}
-                          />
-                        }
-                        label={<Typography variant="caption">甘特圖</Typography>}
-                        sx={{ mr: 0 }}
-                      />
-                      <IconButton size="small" color="error" onClick={() => handleDeleteMilestone(ms.id)}>
-                        <Delete />
-                      </IconButton>
-                    </Grid>
-                    <Grid size={{ xs: 12 }}>
-                      <TextField
-                        label="備註（選填）"
-                        size="small"
-                        fullWidth
-                        value={ms.note ?? ''}
-                        onChange={(e) => handleUpdateMilestone(ms.id, { note: e.target.value || undefined })}
-                      />
-                    </Grid>
-                  </Grid>
-                </Paper>
-              ))}
-              {milestones.length === 0 && (
-                <Typography variant="body2" color="text.disabled" sx={{ pl: 1 }}>尚無里程碑</Typography>
-              )}
-            </Box>
-          </Grid>
+          <TaskMilestones milestones={milestones} onChange={setMilestones} />
 
           {/* ── Timeline Entries Section ── */}
           <Grid size={{ xs: 12 }}>
@@ -999,222 +640,13 @@ export const TaskForm: React.FC<TaskFormProps> = ({ open, onClose, initialData, 
             </Collapse>
           </Grid>
 
-          <Grid size={{ xs: 12 }}>
-            <Divider sx={{ my: 2 }} />
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                <Typography variant="h6">工作產出 (Work Outputs)</Typography>
-                <Button startIcon={<Add />} variant="outlined" size="small" onClick={handleAddOutput}>新增產出</Button>
-            </Box>
-
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {outputs.map((output) => {
-                    const typeMeta = getOutputTypeMeta(output.outputTypeId);
-                    const isIntangible = typeMeta !== null && !typeMeta.isTangible;
-                    const outputSnapshots = output.weeklySnapshots ?? [];
-                    const isSnapExpanded = expandedOutputSnaps.has(output.id);
-                    return (
-                    <Paper key={output.id} variant="outlined" sx={{ p: 2, bgcolor: 'action.hover' }}>
-                        <Grid container spacing={2} alignItems="flex-start">
-                            {/* Row 1：名稱 + 類型 + 完成度 + 操作按鈕 */}
-                            <Grid size={{ xs: 12, md: 4 }}>
-                                <TextField
-                                    label="產出名稱"
-                                    size="small"
-                                    fullWidth
-                                    required
-                                    value={output.name}
-                                    onChange={(e) => handleUpdateOutput(output.id, 'name', e.target.value)}
-                                />
-                            </Grid>
-                            <Grid size={{ xs: 12, md: 4 }}>
-                                <FormControl fullWidth size="small">
-                                    <InputLabel>產出類型</InputLabel>
-                                    <Select
-                                        value={output.outputTypeId || ''}
-                                        label="產出類型"
-                                        onChange={(e) => handleUpdateOutput(output.id, 'outputTypeId', e.target.value)}
-                                    >
-                                        <MenuItem value=""><em>未分類</em></MenuItem>
-                                        {outputTypes.map(ot => (
-                                            <MenuItem key={ot.id} value={ot.id}>
-                                                {ot.name}
-                                                <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
-                                                    {ot.isTangible ? '（有形）' : '（無形）'}
-                                                </Typography>
-                                            </MenuItem>
-                                        ))}
-                                    </Select>
-                                </FormControl>
-                            </Grid>
-                            <Grid size={{ xs: 8, md: 2 }}>
-                                <TextField
-                                    label="完成度 (%)"
-                                    size="small"
-                                    type="number"
-                                    fullWidth
-                                    placeholder="0-100"
-                                    inputProps={{ min: 0, max: 100, step: 1 }}
-                                    value={output.completeness}
-                                    onChange={(e) => {
-                                        const val = e.target.value === '' ? '' : Math.min(100, Math.max(0, parseInt(e.target.value) || 0)).toString();
-                                        handleUpdateOutput(output.id, 'completeness', val);
-                                    }}
-                                />
-                            </Grid>
-                            <Grid size={{ xs: 4, md: 2 }} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                <Tooltip title={output.effectiveDate ? `複製為下期（${format(addDays(parseISO(output.effectiveDate), 7), 'MM/dd')} 起）` : '複製為下期產出'}>
-                                    <IconButton size="small" color="primary" onClick={() => handleCopyOutput(output.id)}>
-                                        <ContentCopy fontSize="small" />
-                                    </IconButton>
-                                </Tooltip>
-                                <IconButton size="small" color="error" onClick={() => handleDeleteOutput(output.id)}>
-                                    <Delete />
-                                </IconButton>
-                            </Grid>
-
-                            {/* Row 2：依類型顯示 summary（無形）或 link（有形/未分類） */}
-                            {isIntangible ? (
-                                <Grid size={{ xs: 12 }}>
-                                    <TextField
-                                        label="說明/摘要（無形產出的描述）"
-                                        size="small"
-                                        fullWidth
-                                        multiline
-                                        rows={2}
-                                        placeholder="描述這項產出的具體內容或價值..."
-                                        value={output.summary || ''}
-                                        onChange={(e) => handleUpdateOutput(output.id, 'summary', e.target.value)}
-                                    />
-                                </Grid>
-                            ) : (
-                                <Grid size={{ xs: 12 }}>
-                                    <TextField
-                                        label="相關連結 (URL/路徑)"
-                                        size="small"
-                                        fullWidth
-                                        value={output.link || ''}
-                                        InputProps={{ startAdornment: <LinkIcon fontSize="small" sx={{ mr: 1, color: 'action.active' }} /> }}
-                                        onChange={(e) => handleUpdateOutput(output.id, 'link', e.target.value)}
-                                    />
-                                </Grid>
-                            )}
-
-                            {/* Row 3：歸屬期間（週期型產出選填） */}
-                            <Grid size={{ xs: 12, md: 6 }}>
-                                <DatePicker
-                                    label="歸屬期間（選填，週期型產出）"
-                                    value={output.effectiveDate ? new Date(output.effectiveDate + 'T00:00:00') : null}
-                                    onChange={(date: Date | null) => {
-                                        handleUpdateOutput(output.id, 'effectiveDate', date ? format(date, 'yyyy-MM-dd') : '');
-                                    }}
-                                    slotProps={{
-                                        textField: {
-                                            size: 'small',
-                                            fullWidth: true,
-                                            helperText: '週期型產出（如每週會議報告）請填歸屬日期；持續型產出（如長期文件）留空',
-                                        },
-                                    }}
-                                />
-                            </Grid>
-
-                            {/* Row 4：完成度快照（local state，隨儲存任務一起存） */}
-                            <Grid size={{ xs: 12 }}>
-                                <Box
-                                    onClick={() => toggleOutputSnap(output.id)}
-                                    sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 0.5, userSelect: 'none' }}
-                                >
-                                    {isSnapExpanded ? <ExpandLess fontSize="small" color="action" /> : <ExpandMore fontSize="small" color="action" />}
-                                    <Typography variant="caption" color="text.secondary">
-                                        完成度快照（{outputSnapshots.length} 筆）
-                                    </Typography>
-                                </Box>
-                                <Collapse in={isSnapExpanded}>
-                                    <Box sx={{ pl: 1, pt: 1 }}>
-                                        {[...outputSnapshots]
-                                            .sort((a, b) => b.weekStart.localeCompare(a.weekStart))
-                                            .map(snap => (
-                                                <Box key={snap.weekStart} sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 0.5 }}>
-                                                    <Typography variant="caption" sx={{ minWidth: 110, fontFamily: 'monospace', flexShrink: 0 }}>
-                                                        {snap.weekStart}
-                                                    </Typography>
-                                                    <TextField
-                                                        size="small"
-                                                        type="number"
-                                                        label="%"
-                                                        value={snap.completeness}
-                                                        inputProps={{ min: 0, max: 100, step: 5 }}
-                                                        sx={{ width: 75 }}
-                                                        onChange={(e) => {
-                                                            const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
-                                                            handleUpdateOutputSnapshots(output.id, outputSnapshots.map(s =>
-                                                                s.weekStart === snap.weekStart ? { ...s, completeness: val } : s
-                                                            ));
-                                                        }}
-                                                    />
-                                                    <IconButton size="small" color="error" onClick={() => {
-                                                        handleUpdateOutputSnapshots(output.id, outputSnapshots.filter(s => s.weekStart !== snap.weekStart));
-                                                    }}>
-                                                        <Delete fontSize="small" />
-                                                    </IconButton>
-                                                </Box>
-                                            ))}
-                                        {outputSnapshots.length === 0 && (
-                                            <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mb: 0.5 }}>
-                                                尚無快照
-                                            </Typography>
-                                        )}
-                                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', flexWrap: 'wrap', mt: 0.5 }}>
-                                            <DatePicker
-                                                label="週次"
-                                                value={newOutputSnap[output.id]?.date ?? null}
-                                                onChange={(date) => setNewOutputSnap(prev => ({
-                                                    ...prev,
-                                                    [output.id]: { ...prev[output.id] ?? { value: '' }, date },
-                                                }))}
-                                                slotProps={{ textField: { size: 'small', sx: { width: 165 } } }}
-                                            />
-                                            <TextField
-                                                size="small"
-                                                type="number"
-                                                label="%"
-                                                value={newOutputSnap[output.id]?.value ?? ''}
-                                                inputProps={{ min: 0, max: 100, step: 5 }}
-                                                sx={{ width: 75 }}
-                                                onChange={(e) => {
-                                                    const val = e.target.value === '' ? '' : Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
-                                                    setNewOutputSnap(prev => ({
-                                                        ...prev,
-                                                        [output.id]: { ...prev[output.id] ?? { date: null }, value: val },
-                                                    }));
-                                                }}
-                                            />
-                                            <IconButton
-                                                size="small"
-                                                color="primary"
-                                                disabled={!newOutputSnap[output.id]?.date || newOutputSnap[output.id]?.value === ''}
-                                                onClick={() => handleAddOutputSnapshot(output.id)}
-                                                sx={{ mt: 0.5 }}
-                                            >
-                                                <Add />
-                                            </IconButton>
-                                        </Box>
-                                        <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.3 }}>
-                                            日期自動對齊至該週週日。快照於儲存任務時一起寫入。
-                                        </Typography>
-                                    </Box>
-                                </Collapse>
-                            </Grid>
-                        </Grid>
-                    </Paper>
-                    );
-                })}
-                {outputs.length === 0 && (
-                    <Typography variant="body2" color="textSecondary" align="center" sx={{ py: 2 }}>
-                        目前尚無產出紀錄。
-                    </Typography>
-                )}
-            </Box>
-          </Grid>
+          {/* ── Work Outputs Section ── */}
+          <TaskOutputs
+            key={`outputs-${open}-${initialData?.id ?? 'new'}`}
+            outputs={outputs}
+            onChange={setOutputs}
+            outputTypes={outputTypes}
+          />
         </Grid>
       </DialogContent>
       <DialogActions>

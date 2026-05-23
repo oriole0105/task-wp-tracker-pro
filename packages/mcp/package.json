@@ -10,7 +10,8 @@
     "./tools/timeslots": "./src/tools/timeslotTools.ts",
     "./tools/todos": "./src/tools/todoTools.ts",
     "./tools/reports": "./src/tools/reportTools.ts",
-    "./tools/data": "./src/tools/dataTools.ts"
+    "./tools/data": "./src/tools/dataTools.ts",
+    "./tools/settings": "./src/tools/settingsTools.ts"
   },
   "scripts": {
     "dev": "tsx src/index.ts",
